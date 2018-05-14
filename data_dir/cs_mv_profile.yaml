@@ -9,12 +9,12 @@ table: users
 table_definition: |
 
   CREATE TABLE users (
-    username text,
-    first_name text,
-    last_name text,
+    username uuid,
+    first_name blob,
+    last_name blob,
     password text,
     email text,
-    last_access timeuuid,
+    last_access timestamp,
     PRIMARY KEY(username)
   );
 
