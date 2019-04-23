@@ -2299,6 +2299,7 @@ class BaseScyllaCluster(object):
                           client_encrypt=self._param_enabled('client_encrypt'),
                           append_conf=self.params.get('append_conf'),
                           hinted_handoff_disabled=self._param_enabled('hinted_handoff_disabled'),
+                          murmur3_partitioner_ignore_msb_bits=self._param_enabled('murmur3_partitioner_ignore_msb_bits'),
                           append_scylla_args=self.get_scylla_args())
 
     def node_setup(self, node, verbose=False, timeout=3600):

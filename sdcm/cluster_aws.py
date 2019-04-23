@@ -576,10 +576,14 @@ class ScyllaAWSCluster(cluster.BaseScyllaCluster, AWSCluster):
             enable_exp=self._param_enabled('experimental'),
             endpoint_snitch=endpoint_snitch,
             authenticator=self.params.get('authenticator'),
+            hinted_handoff_disabled=self.params.get('hinted_handoff_disabled'),
+            murmur3_partitioner_ignore_msb_bits=self.params.get('murmur3_partitioner_ignore_msb_bits'),
+                          append_conf=self.params.get('append_conf'),
             server_encrypt=self._param_enabled('server_encrypt'),
             client_encrypt=self._param_enabled('client_encrypt'),
             append_scylla_args=self.get_scylla_args(),
         )
+
         if cluster.Setup.MULTI_REGION:
             setup_params.update(dict(
                 seed_address=seed_address,
