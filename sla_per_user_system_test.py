@@ -444,6 +444,7 @@ class SlaPerUserTest(LongevityTest):
                                                                workload_type=self.WORKLOAD_LATENCY, threads=250,
                                                                stress_duration_min=stress_duration,
                                                                max_rows_for_read=max_key_for_read)
+
                      ]
 
         self._throughput_latency_tests_run(read_users=read_users, read_cmds=read_cmds, latency_user=read_users[1])
