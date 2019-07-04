@@ -34,6 +34,8 @@ class SlaPerUserTest(LongevityTest):
         'throttle=10000/s -pop seq={pop}'
     STRESS_READ_CMD = 'cassandra-stress read cl=ALL duration={duration} -port jmx=6868 -mode cql3 native user={user} ' \
                       'password={password} -rate threads={threads} -pop {pop}'
+    STRESS_MIXED_CMD = "cassandra-stress mixed ratio\(write={write_ratio},read={write_ratio}\) cl=QUORUM duration={duration} -port jmx=6868 " \
+                       "-mode cql3 native user={user} password={password} -rate threads={threads} -pop {pop} "
     DEFAULT_USER = 'cassandra'
     DEFAULT_USER_PASSWORD = 'cassandra'
     DEFAULT_USER_SLA = 'sla_cassandra'
@@ -246,8 +248,9 @@ class SlaPerUserTest(LongevityTest):
                      ]
         self.run_stress_and_verify_threads(params={'stress_cmd': read_cmds})
 
-    def define_read_cassandra_stress_command(self, user, load_type, workload_type, threads, stress_duration_min,  # pylint: disable=invalid-name, too-many-locals,too-many-arguments
-                                             max_rows_for_read=None):
+    def define_read_cassandra_stress_command(self, user, load_type, workload_type, threads, stress_duration_min,
+                                             max_rows_for_read=None, stress_command=STRESS_READ_CMD,
+                                             throttle=20000, **kwargs):
         """
         :param user: dict with User/Role/ServiceLevel objects
         :param load_type: cache_only/disk_only/mixed
@@ -255,8 +258,8 @@ class SlaPerUserTest(LongevityTest):
                                 or
                               throughput: no restriction
         """
-        def latency():  # pylint: disable=unused-variable
-            return '%d throttle=20000/s' % threads
+        def latency():
+            return '%d throttle=%d/s' % (threads, throttle)
 
         def throughput():  # pylint: disable=unused-variable
             return threads
@@ -284,11 +287,12 @@ class SlaPerUserTest(LongevityTest):
         rate = locals()[workload_type]()  # define -rate for c-s command depend on workload type
         pop = locals()[load_type](max_rows_for_read)  # define -pop for c-s command depend on load type
 
-        c_s_cmd = self.STRESS_READ_CMD.format(n=self.num_of_partitions, user=user_name,
-                                              password=user_name,
-                                              pop=pop,
-                                              duration='%dm' % stress_duration_min,
-                                              threads=rate)
+        params = {'n': self.num_of_partitions, 'user': user_name, 'password': user_name, 'pop': pop,
+                  'duration': '%dm' % stress_duration_min, 'threads': rate}
+        if kwargs:
+            params.update(kwargs['kwargs'])
+        c_s_cmd = stress_command.format(**params)
+
         return c_s_cmd
 
     def test_read_throughput_1to5_ratio(self):
@@ -464,10 +468,10 @@ class SlaPerUserTest(LongevityTest):
         Expected results: latency 99th of user950 workload when it runs in parallel with workload of user190 is not
                           significant increased relatively to latency of runed alone user950 workload
         """
-        stress_duration = 5  # minutes
+        stress_duration = 60  # minutes
 
         session = self.prepare_schema()
-        self.create_test_data(rows_amount=2000000000)
+        self.create_test_data(rows_amount=2500000000)
 
         # Select part of the record to warm the cache (all this data will be in the cache).
         # cassandra-stress "-pop" parameter will start from more then "max_key_for_cache" row number
@@ -551,5 +555,124 @@ class SlaPerUserTest(LongevityTest):
             result_print_str += '\nLatency 99 is {} in {}%'.format(latency_change, deviation)
 
             self.log.info(result_print_str)
+        finally:
+            self.clean_auth(entities_list_of_dict=read_users)
+
+    def test_two_slas_one_to_five_ratio_mix_70perc_load(self):
+        """
+        Test scenario:
+        - Add SLA and grant to user (before any load)
+        - user190 with 190 shares
+        - user950 qith 950 shares
+        - Each user runs load from own loader (round robin)
+        - Expect OPS ratio between two loads is 1:5 (e.g. 190:950)
+        - Expect scheduler run time between two loads is 1:5 (e.g. 190:950)
+        """
+
+        session = self.prepare_schema()
+        self.create_test_data(rows_amount=2500000000)
+        stress_duration_min = 10
+
+        # Define Service Levels/Roles/Users
+        shares = [190, 950]
+        read_users = []
+        for share in shares:
+            read_users.append({'user': User(session=session, name='user%d' % share, password='user%d' % share),
+                               'role': Role(session=session, name='role%d' % share),
+                               'service_level': ServiceLevel(session=session, name='sla%d' % share,
+                                                             service_shares=share)})
+
+        expected_shares_ratio = self.calculate_metrics_ratio_per_user(two_users_list=read_users)
+
+        # Create Service Levels/Roles/Users
+        self.create_auths(entities_list_of_dict=read_users)
+
+        read_cmds = [self.define_read_cassandra_stress_command(user=read_users[0], load_type=self.MIXED_LOAD,
+                                                               workload_type=self.WORKLOAD_THROUGHPUT, threads=120,
+                                                               stress_duration_min=stress_duration_min,
+                                                               stress_command=self.STRESS_MIXED_CMD,
+                                                               kwargs={'write_ratio': 1, 'read_ratio': 1}),
+                     self.define_read_cassandra_stress_command(user=read_users[1], load_type=self.MIXED_LOAD,
+                                                               workload_type=self.WORKLOAD_LATENCY, threads=120,
+                                                               stress_duration_min=stress_duration_min,
+                                                               stress_command=self.STRESS_MIXED_CMD,
+                                                               kwargs={'write_ratio': 1, 'read_ratio': 1})
+                     ]
+
+        try:
+            read_queue = self.run_stress_and_verify_threads(params={'stress_cmd': read_cmds, 'round_robin': True})
+
+            results = self.get_c_s_stats(read_queue=read_queue, users=read_users,
+                                         statistic_name='latency 99th percentile')
+            self.log.debug('OPS RESULTS: {}'.format(results))
+
+            self.assertTrue(results, msg='Not received cassandra-stress results')
+
+            self.log.info('Validate cassandra-stress ops deviation')
+            actual_shares_ratio = self.calculate_metrics_ratio_per_user(two_users_list=read_users, metrics=results)
+            self.validate_deviation(expected_ratio=expected_shares_ratio,
+                                    actual_ratio=actual_shares_ratio, msg='Validate cassandra-stress ops.')
+
+        finally:
+            self.clean_auth(entities_list_of_dict=read_users)
+
+    def test_two_slas_one_to_five_ratio_mix_100perc_load(self):
+        """
+        Test scenario:
+        - Add SLA and grant to user (before any load)
+        - user190 with 190 shares
+        - user950 qith 950 shares
+        - Each user runs load from own loader (round robin)
+        - Expect OPS ratio between two loads is 1:5 (e.g. 190:950)
+        - Expect scheduler run time between two loads is 1:5 (e.g. 190:950)
+        """
+
+        session = self.prepare_schema()
+        self.create_test_data(rows_amount=2500000000)
+        stress_duration_min = 120
+
+        # Define Service Levels/Roles/Users
+        shares = [190, 950]
+        read_users = []
+        for share in shares:
+            read_users.append({'user': User(session=session, name='user%d' % share, password='user%d' % share),
+                               'role': Role(session=session, name='role%d' % share),
+                               'service_level': ServiceLevel(session=session, name='sla%d' % share,
+                                                             service_shares=share)})
+
+        expected_shares_ratio = self.calculate_metrics_ratio_per_user(two_users_list=read_users)
+
+        # Create Service Levels/Roles/Users
+        self.create_auths(entities_list_of_dict=read_users)
+
+        read_cmds = [self.define_read_cassandra_stress_command(user=read_users[0], load_type=self.MIXED_LOAD,
+                                                               workload_type=self.WORKLOAD_THROUGHPUT, threads=150,
+                                                               stress_duration_min=stress_duration_min,
+                                                               stress_command=self.STRESS_MIXED_CMD,
+                                                               kwargs={'write_ratio': 1, 'read_ratio': 1}),
+                     self.define_read_cassandra_stress_command(user=read_users[1], load_type=self.MIXED_LOAD,
+                                                               workload_type=self.WORKLOAD_LATENCY, threads=150,
+                                                               stress_duration_min=stress_duration_min,
+                                                               stress_command=self.STRESS_MIXED_CMD,
+                                                               kwargs={'write_ratio': 1, 'read_ratio': 1})
+                     ]
+
+        try:
+            start_time = time.time()
+
+            read_queue = self.run_stress_and_verify_threads(params={'stress_cmd': read_cmds, 'round_robin': True})
+
+            results = self.get_c_s_stats(read_queue=read_queue, users=read_users,
+                                         statistic_name='latency 99th percentile')
+            self.validate_if_scylla_load_high_enough(start_time=start_time,
+                                                     wait_cpu_utilization=self.MIN_CPU_UTILIZATION)
+
+            self.assertTrue(results, msg='Not received cassandra-stress results')
+
+            self.log.info('Validate cassandra-stress ops deviation')
+            actual_shares_ratio = self.calculate_metrics_ratio_per_user(two_users_list=read_users, metrics=results)
+            self.validate_deviation(expected_ratio=expected_shares_ratio,
+                                    actual_ratio=actual_shares_ratio, msg='Validate cassandra-stress ops.')
+
         finally:
             self.clean_auth(entities_list_of_dict=read_users)

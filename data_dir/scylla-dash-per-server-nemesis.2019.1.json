@@ -1050,6 +1050,12 @@
                               "format": "time_series",
                               "intervalFactor": 1,
                               "refId": "A"
+                            },
+                            {
+                              "expr": "collectd_cassandra_stress_mixed_gauge{type=\"ops\"}",
+                              "format": "time_series",
+                              "intervalFactor": 1,
+                              "refId": "B"
                             }
                           ],
                           "thresholds": [],

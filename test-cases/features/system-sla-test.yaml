@@ -1,4 +1,4 @@
-test_duration: 60
+test_duration: 2880
 
 n_db_nodes: 3
 n_loaders: 3
@@ -19,4 +19,4 @@ authenticator_user: cassandra
 authenticator_password: cassandra
 authorizer: 'ScyllaAuthorizer'
 
-use_mgmt: true
+use_mgmt: false
