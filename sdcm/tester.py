@@ -10,6 +10,7 @@
 # See LICENSE for more details.
 #
 # Copyright (c) 2016 ScyllaDB
+import threading
 
 import re
 import os
@@ -32,6 +33,7 @@ from cassandra.cluster import Cluster as ClusterDriver
 from cassandra.cluster import NoHostAvailable
 from cassandra.policies import RetryPolicy
 from cassandra.policies import WhiteListRoundRobinPolicy
+from cassandra.query import SimpleStatement
 from libcloud.compute.providers import get_driver
 from libcloud.compute.types import Provider
 
@@ -61,7 +63,7 @@ from . import db_stats
 from db_stats import PrometheusDBStats
 from results_analyze import PerformanceResultsAnalyzer
 from sdcm.sct_config import SCTConfiguration
-from sdcm.sct_events import start_events_device, stop_events_device, InfoEvent, EVENTS_PROCESSES
+from sdcm.sct_events import start_events_device, stop_events_device, InfoEvent, EVENTS_PROCESSES, FullScanEvent
 from sdcm.stress_thread import CassandraStressThread
 from sdcm.gemini_thread import GeminiStressThread
 from sdcm import wait
@@ -834,7 +836,7 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):
             else:
                 self.loaders.kill_stress_thread()
             if self.params.get('fullscan', default=False):
-                self.loaders.kill_fullscan_thread()
+                self.kill_fullscan_thread()
             if self.params.get('gemini_cmd', default=False):
                 self.loaders.kill_gemini_thread()
 
@@ -891,8 +893,42 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):
                          'errors': stats['errors']})
         return stats
 
+    def run_fullscan(self, ks_cf, loader_node, db_node, page_size=100000):
+        """Run cql select count(*) request
+
+        if ks_cf is not random, use value from config
+        if ks_cf is random, choose random from not system
+
+        Arguments:
+            loader_node {BaseNode} -- loader cluster node
+            db_node {BaseNode} -- db cluster node
+
+        Returns:
+            object -- object with result of remoter.run command
+        """
+        ks_cf_list = self.loaders.get_non_system_ks_cf_list(loader_node, db_node)
+        if ks_cf not in ks_cf_list:
+            ks_cf = 'random'
+
+        if 'random' in ks_cf.lower():
+            ks_cf = random.choice(ks_cf_list)
+
+        FullScanEvent(type='start', db_node_ip=db_node.ip_address, ks_cf=ks_cf)
+
+        try:
+            with self.cql_connection_patient(db_node) as session:
+                result = session.execute(SimpleStatement('select * from {}'.format(ks_cf), fetch_size=page_size,
+                                                         consistency_level=ConsistencyLevel.ONE))
+                while result.has_more_pages:
+                    result.fetch_next_page()
+            result = {'exit_code': 0, 'stdout': 'finished successfully', 'stderr': ''}
+        except Exception as details:
+            result = {'exit_code': 1, 'stdout': '', 'stderr': details.message}
+
+        FullScanEvent(type='finish', db_node_ip=db_node.ip_address, ks_cf=ks_cf, result=result)
+
     def run_fullscan_thread(self, ks_cf='random', interval=1, duration=None):
-        """Run thread of cql command select count(*)
+        """Run thread of cql command select *
 
         Calculaute test duration and timeout interval between
         requests and execute the thread with cqlsh command to
@@ -905,10 +941,30 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):
         """
         duration = self.get_duration(duration)
         interval = interval * 60
-        self.loaders.run_fullscan_thread(ks_cf,
-                                         db_nodes=self.db_cluster.nodes,
-                                         interval=interval,
-                                         duration=duration)
+
+        @log_run_info('Fullscan thread')
+        def run_in_thread():
+            start = current = time.time()
+            while current - start < duration:
+                loader_node = random.choice(self.loaders.nodes)
+                db_node = random.choice(self.db_cluster.nodes)
+                if db_node.termination_event.isSet():
+                    break
+                if hasattr(db_node, 'remoter') and db_node.remoter and not db_node.remoter.is_up():
+                    self.log.warning("Chosen node is down. Choose new one")
+                    continue
+
+                self.run_fullscan(ks_cf, loader_node, db_node)
+                time.sleep(interval)
+                current = time.time()
+
+        th = threading.Thread(target=run_in_thread)
+        th.daemon = True
+        th.start()
+
+    def kill_fullscan_thread(self):
+        for node in self.db_cluster.nodes:
+            node.termination_event.set()
 
     def get_auth_provider(self, user, password):
         return PlainTextAuthProvider(username=user, password=password)
