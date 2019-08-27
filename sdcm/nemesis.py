@@ -256,13 +256,18 @@ class Nemesis(object):
         break_scylla = get_data_dir_path('break_scylla.sh')
         self.target_node.remoter.send_files(break_scylla,
                                             "/tmp/break_scylla.sh")
+        ks_cfs = get_non_system_ks_cf_list(loader_node=random.choice(self.loaders.nodes),
+                                           db_node=self.target_node)
+        destroyed_ks_cf = random.choice(ks_cfs) if ks_cfs else ks_cfs  # expected value as: 'keyspace1.standard1'
+        if not destroyed_ks_cf:
+            raise ValueError('Non-system keyspace and table are not found. CorruptThenRepair nemesis can\'t be run')
 
         # Stop scylla service before deleting sstables to avoid partial deletion of files that are under compaction
         self.target_node.stop_scylla_server(verify_up=False, verify_down=True)
 
         # corrupt the DB
         self.target_node.remoter.run('chmod +x /tmp/break_scylla.sh')
-        self.target_node.remoter.run('sudo /tmp/break_scylla.sh')  # corrupt the DB
+        self.target_node.remoter.run('sudo /tmp/break_scylla.sh %s' % destroyed_ks_cf.split('.')[0])  # corrupt the DB
 
         self.target_node.start_scylla_server(verify_up=True, verify_down=False)
 
