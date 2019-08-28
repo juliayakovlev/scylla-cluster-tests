@@ -1047,8 +1047,6 @@ def get_non_system_ks_cf_list(loader_node, db_node, request_timeout=300, filter_
     views_list = set()
     if filter_out_mv:
         tables = get_tables_columns_list('view')
-        if not tables:
-            return []
 
         for table in tables:
             views_list.add('.'.join([name.strip() for name in table[:2]]))
