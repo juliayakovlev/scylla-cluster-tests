@@ -8,7 +8,11 @@ n_monitor_nodes: 1
 
 instance_type_db: 'i3.4xlarge'
 
-nemesis_class_name: 'ChaosMonkey'
+append_scylla_args: '--blocked-reactor-notify-ms 500 --abort-on-lsa-bad-alloc 1 --abort-on-seastar-bad-alloc --smp 8 --memory 61G'
+
+#update_db_binary: '/home/jenkins/slave/workspace/scylla-staging/benny_binary/scylla-debug-3.1.0.rc8-0.20190923.d7fc7bcf9'
+
+nemesis_class_name: 'NonDisruptiveMonkey'
 nemesis_interval: 5
 
 user_prefix: 'longevity-10gb-3h'

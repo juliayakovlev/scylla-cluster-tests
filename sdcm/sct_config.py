@@ -190,6 +190,9 @@ class SCTConfiguration(dict):
              help="""A local directory of rpms to install a custom version on top of
                      the scylla installed (or from repo or from ami)"""),
 
+        dict(name="update_db_binary", env="SCT_UPDATE_DB_BINARY", type=str,
+             help="""The new db binary will be uploaded to db instance to replace the one provided by the ami"""),
+
         dict(name="monitor_branch", env="SCT_MONITOR_BRANCH", type=str,
              help="The port of scylla management"),
 
