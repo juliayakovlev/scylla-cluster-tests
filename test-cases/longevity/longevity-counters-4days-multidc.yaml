@@ -1,12 +1,12 @@
-test_duration: 5760
+test_duration: 120
 
 #stress_cmd: Inside the user-profile file.
 cs_user_profiles:
     - scylla-qa-internal/cust_g/data_by_tracking_id.yaml
-cs_duration: '5500m'
+cs_duration: '120m'
 
-n_db_nodes: '6 6 6'
-n_loaders:  3
+n_db_nodes: '3 3'
+n_loaders:  2
 n_monitor_nodes: 1
 
 instance_type_db: 'i3.2xlarge'
@@ -16,7 +16,7 @@ user_prefix: longevity-counters-4d
 space_node_threshold: 6442
 
 nemesis_class_name: 'ChaosMonkey'
-nemesis_interval: 15
-nemesis_during_prepare: false
+nemesis_interval: 5
+nemesis_during_prepare: true
 
 use_mgmt: true

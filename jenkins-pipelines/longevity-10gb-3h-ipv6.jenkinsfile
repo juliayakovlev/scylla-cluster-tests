@@ -7,10 +7,10 @@ longevityPipeline(
     params: params,
 
     backend: 'aws',
-    aws_region: 'eu-west-1',
+    aws_region: 'eu-west-1 us-east-1',
     ip_ssh_connections: 'ipv6',
     test_name: 'longevity_test.LongevityTest.test_custom_time',
-    test_config: 'test-cases/longevity/longevity-10gb-3h.yaml',
+    test_config: 'test-cases/longevity/longevity-counters-4days-multidc.yaml',
 
-    timeout: [time: 300, unit: 'MINUTES']
+    timeout: [time: 200, unit: 'MINUTES']
 )
