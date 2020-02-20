@@ -106,6 +106,8 @@ class Nemesis():  # pylint: disable=too-many-instance-attributes,too-many-public
             'alternator_usertable': '*',  # Ignore alternator tables
             'mview': 'users',  # Ignore MV user-profile tables
             'sec_index': 'users',  # Ignore SI user-profile tables
+            # TODO: issue https://github.com/scylladb/scylla/issues/6074. Waiting for dev conclusions
+            'cqlstress_lwt_example': '*'  # Ignore LWT user-profile tables
         }
 
     def update_stats(self, disrupt, status=True, data=None):
