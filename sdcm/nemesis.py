@@ -1805,21 +1805,21 @@ class Nemesis():  # pylint: disable=too-many-instance-attributes,too-many-public
         If the node is decommission unexpectedly, need to re-add a new node to cluster.
         """
         self._set_current_disruption('DecommissionStreamingErr')
-        self.break_streaming_task_and_rebuild(task='decommission')
+        # self.break_streaming_task_and_rebuild(task='decommission')
 
     def disrupt_rebuild_streaming_err(self):
         """
         Stop rebuild in middle to trigger some streaming fails, then rebuild the data on the node.
         """
         self._set_current_disruption('RebuildStreamingErr')
-        self.break_streaming_task_and_rebuild(task='rebuild')
+        # self.break_streaming_task_and_rebuild(task='rebuild')
 
     def disrupt_repair_streaming_err(self):
         """
         Stop repair in middle to trigger some streaming fails, then rebuild the data on the node.
         """
         self._set_current_disruption('RepairStreamingErr')
-        self.break_streaming_task_and_rebuild(task='repair')
+        # self.break_streaming_task_and_rebuild(task='repair')
 
 
 class NotSpotNemesis(Nemesis):

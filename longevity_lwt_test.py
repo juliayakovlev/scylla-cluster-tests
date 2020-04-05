@@ -212,7 +212,7 @@ class LWTLongevityTest(LongevityTest):
     def stop_nemesis_and_repair_cluster(self):
         # Stop nemesis. Repair on all nodes will be run before data validation, so all nodes should be up
         # and also prevent case to run repair from nemesis in parallel
-        if self.params.get('nemesis_during_prepare'):
+        if self.db_cluster.nemesis_threads:
             self.db_cluster.stop_nemesis()
 
         # TODO: Temporary print. Will be removed
