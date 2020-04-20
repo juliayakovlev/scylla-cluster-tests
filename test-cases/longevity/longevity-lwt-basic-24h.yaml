@@ -22,7 +22,7 @@ regions_data:
   us-west-2:
     ami_id_loader: 'ami-063a97bde47353690'
 
-nemesis_class_name: 'ChaosMonkey'
+nemesis_class_name: 'LimitedChaosMonkey'
 nemesis_interval: 5
 nemesis_during_prepare: false
 space_node_threshold: 64424
