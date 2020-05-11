@@ -2025,7 +2025,8 @@ class GrowShrinkClusterNemesis(Nemesis):
 
     @log_time_elapsed_and_status
     def disrupt(self):
-        self.disrupt_grow_shrink_cluster()
+        pass
+    #     self.disrupt_grow_shrink_cluster()
 
 
 class StopWaitStartMonkey(Nemesis):
@@ -2624,7 +2625,8 @@ class DecommissionStreamingErrMonkey(Nemesis):
 
     @log_time_elapsed_and_status
     def disrupt(self):
-        self.disrupt_decommission_streaming_err()
+        pass
+        # self.disrupt_decommission_streaming_err()
 
 
 class RebuildStreamingErrMonkey(Nemesis):
@@ -2633,7 +2635,8 @@ class RebuildStreamingErrMonkey(Nemesis):
 
     @log_time_elapsed_and_status
     def disrupt(self):
-        self.disrupt_rebuild_streaming_err()
+        pass
+    #     self.disrupt_rebuild_streaming_err()
 
 
 class RepairStreamingErrMonkey(Nemesis):
@@ -2642,7 +2645,8 @@ class RepairStreamingErrMonkey(Nemesis):
 
     @log_time_elapsed_and_status
     def disrupt(self):
-        self.disrupt_repair_streaming_err()
+        pass
+    #     self.disrupt_repair_streaming_err()
 
 
 RELATIVE_NEMESIS_SUBCLASS_LIST = [NotSpotNemesis]
