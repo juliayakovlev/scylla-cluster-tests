@@ -3849,7 +3849,7 @@ class BaseLoaderSet():
                 if "truncate: seastar::rpc::timeout_error" in errors_str or "Operation timed out" in errors_str:
                     event_type, event_severity = 'timeout', Severity.ERROR
                 else:
-                    event_type, event_severity = 'failure', Severity.CRITICAL
+                    event_type, event_severity = 'failure', Severity.ERROR
 
                 ScyllaBenchEvent(type=event_type, node=str(node), stress_cmd=stress_cmd,
                                  log_file_name=log_file_name, severity=event_severity,
