@@ -468,10 +468,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         old_node_ip = self.target_node.ip_address
         self._terminate_cluster_node(self.target_node)
         new_node = self._add_and_init_new_cluster_node(old_node_ip)
-        try:
-            self.repair_nodetool_repair(new_node)
-        finally:
-            new_node.running_nemesis = None
+        new_node.running_nemesis = None
 
     def disrupt_no_corrupt_repair(self):
         self._set_current_disruption('NoCorruptRepair %s' % self.target_node)
