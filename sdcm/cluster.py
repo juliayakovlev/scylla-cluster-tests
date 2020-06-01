@@ -2468,10 +2468,12 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
         nodes_status = {}
         try:
             statuses = self.parent_cluster.get_nodetool_status(verification_node=self)
+            self.log.debug(f'get_nodes_status.statuses: {statuses}')
 
             for dc, dc_status in statuses.items():
                 for node_ip, node_properties in dc_status.items():
                     nodes_status[node_ip] = {'status': node_properties['state'], 'dc': dc}
+            self.log.debug(f'get_nodes_status.nodes_status: {nodes_status}')
 
         except Exception as ex:  # pylint: disable=broad-except
             ClusterHealthValidatorEvent(type='warning', name='NodesStatus', status=Severity.WARNING,
@@ -3121,6 +3123,7 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods
         status = {}
         res = verification_node.run_nodetool('status')
         data_centers = res.stdout.strip().split("Datacenter: ")
+        self.log.debug(f"data_centers: {data_centers}")
         for dc in data_centers:
             if dc:
                 lines = dc.splitlines()
@@ -3141,6 +3144,7 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods
                         status[dc_name][ip] = node_info
                     except ValueError:
                         pass
+        self.log.debug(f"get_nodetool_status.status: {status}")
         return status
 
     @staticmethod

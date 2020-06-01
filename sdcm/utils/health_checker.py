@@ -15,10 +15,11 @@ def check_nodes_status(nodes_status, current_node):
 
     for node_ip, node_properties in nodes_status.items():
         if node_properties['status'] != "UN":
-            is_target = current_node.print_node_running_nemesis(node_ip)
+            node_running_nemesis = current_node.print_node_running_nemesis(node_ip)
             ClusterHealthValidatorEvent(type='warning', name='NodeStatus', status=Severity.WARNING,
                                         node=current_node.name,
-                                        message=f"Current node {current_node.ip_address}. Node with {node_ip}{is_target} "
+                                        message=f"Current node {current_node.ip_address}. "
+                                                f"Node with {node_ip}{node_running_nemesis} "
                                                 f"status is {node_properties['status']}")
 
 
