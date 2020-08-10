@@ -1777,6 +1777,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             scylla_yml['enable_ipv6_dns_lookup'] = True
 
             scylla_yml['prometheus_address'] = self.ip_address
+            scylla_yml['broadcast_address'] = self.ip_address
             scylla_yml['broadcast_rpc_address'] = self.ip_address
             scylla_yml['listen_address'] = self.ip_address
             scylla_yml['rpc_address'] = self.ip_address
