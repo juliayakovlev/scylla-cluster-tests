@@ -14,7 +14,7 @@ regions_data:
   eu-west-1:
     security_group_ids: 'sg-059a7f66a947d4b5c'
     subnet_id: 'subnet-088fddaf520e4c7a8'
-    ami_id_loader: 'ami-0ce9dc296997751b7' # Loader dedicated AMI v10 with golang 1.13
+    ami_id_loader: 'ami-0ac1d5f2066dfc9b4' # Loader dedicated AMI v11
     ami_id_monitor: 'ami-0ff760d16d9497662' # Official CentOS Linux 7 x86_64 HVM EBS ENA 1901_01
     backup_bucket_location: 'manager-backup-tests-eu-west-1'
   us-west-2:
