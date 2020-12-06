@@ -898,7 +898,8 @@ class ScyllaAWSCluster(cluster.BaseScyllaCluster, AWSCluster):
         )
         if cluster.Setup.INTRA_NODE_COMM_PUBLIC:
             setup_params.update(dict(
-                broadcast=node.public_ip_address,
+                # broadcast=node.public_ip_address,
+                broadcast=node.ip_address,
             ))
 
         if self.extra_network_interface:

@@ -1667,7 +1667,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
 
             if broadcast:
                 # Set broadcast_address
-                scylla_yml['broadcast_address'] = broadcast
+                # scylla_yml['broadcast_address'] = broadcast
 
                 # Set broadcast_rpc_address
                 scylla_yml['broadcast_rpc_address'] = broadcast
