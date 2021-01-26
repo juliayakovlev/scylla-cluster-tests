@@ -51,7 +51,7 @@ pipeline {
                                 export SCT_CONFIG_FILES=${params.test_config}
 
                                 echo "start test ......."
-                                ./docker/env/hydra.sh run-test private_repo_test --backend gce --logdir "`pwd`"
+                                ./docker/env/hydra.sh run-test artifacts_test.PrivateRepoTest.test_private_repo --backend gce --logdir "`pwd`"
                                 echo "end test ....."
                                 """
                             }
