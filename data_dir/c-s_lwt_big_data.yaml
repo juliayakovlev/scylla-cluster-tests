@@ -52,7 +52,7 @@ table_definition: |
         name_set set<text>,
         name_list list<text>,
         PRIMARY KEY(domain, published_date)
-  ) WITH compaction = { 'class':'LeveledCompactionStrategy' }
+  ) WITH compaction = { 'class':'SizeTieredCompactionStrategy' }
     AND comment='A table to hold blog posts'
 
 extra_definitions:
