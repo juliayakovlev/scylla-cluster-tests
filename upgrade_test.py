@@ -37,6 +37,7 @@ def truncate_entries(func):
             base_version = self.params.get('scylla_version')
             system_truncated = bool(parse_version(base_version) >= parse_version('3.1')
                                     and not is_enterprise(base_version))
+            self.log.info("Truncate table before upgrade")
             with self.db_cluster.cql_connection_patient(node, keyspace='truncate_ks') as session:
                 self.cql_truncate_simple_tables(session=session, rows=self.insert_rows)
                 self.validate_truncated_entries_for_table(session=session, system_truncated=system_truncated)
@@ -109,6 +110,16 @@ class UpgradeTest(FillDatabaseData):
             else:
                 self.assertTrue(truncated_time,
                                 msg='Expected truncated entry in the system.local table, but it\'s not found')
+
+    @truncate_entries
+    def upgrade_node_simulator(self, node, upgrade_sstables=True):
+        # pylint: disable=too-many-branches,too-many-statements
+
+        self.log.info('Keilu Upgrading a Node')
+        self.insert_rows = 10
+        self.fill_db_data_for_truncate_test(insert_rows=self.insert_rows)
+        # Let to ks_truncate complete the schema changes
+        time.sleep(120)
 
     @truncate_entries
     def upgrade_node(self, node, upgrade_sstables=True):
@@ -435,6 +446,82 @@ class UpgradeTest(FillDatabaseData):
                         f'Found error: index special column "idx_token" is not recognized'
             ).publish()
 
+    def test_rolling_upgrade_issue_7899(self):  # pylint: disable=too-many-locals,too-many-statements
+        """
+        Upgrade half of nodes in the cluster, and start special read workload
+        during the stage. Checksum method is changed to xxhash from Scylla 2.2,
+        we want to use this case to verify the read (cl=ALL) workload works
+        well, upgrade all nodes to new version in the end.
+        """
+        # In case the target version >= 3.1 we need to perform test for truncate entries
+        target_upgrade_version = self.params.get('target_upgrade_version')
+        self.truncate_entries_flag = False
+        if target_upgrade_version and parse_version(target_upgrade_version) >= parse_version('3.1') and \
+                not is_enterprise(target_upgrade_version):
+            self.truncate_entries_flag = True
+
+        self.log.info('pre-test - prepare test keyspaces and tables')
+        # prepare test keyspaces and tables before upgrade to avoid schema change during mixed cluster.
+        self.prepare_keyspaces_and_tables()
+        self.fill_and_verify_db_data('BEFORE UPGRADE', pre_fill=True)
+
+        # write workload during entire test
+        self.log.info('Starting c-s write workload during entire test')
+        write_stress_during_entire_test = self.params.get('write_stress_during_entire_test')
+        entire_write_cs_thread_pool = self.run_stress_thread(stress_cmd=write_stress_during_entire_test)
+
+        # Let to write_stress_during_entire_test complete the schema changes
+        self.metric_has_data(
+            metric_query='collectd_cassandra_stress_write_gauge{type="ops", keyspace="keyspace_entire_test"}', n=10)
+
+        # Prepare keyspace and tables for truncate test
+        if self.truncate_entries_flag:
+            self.insert_rows = 10
+            self.fill_db_data_for_truncate_test(insert_rows=self.insert_rows)
+            # Let to ks_truncate complete the schema changes
+            time.sleep(120)
+
+        # generate random order to upgrade
+        nodes_num = len(self.db_cluster.nodes)
+        # prepare an array containing the indexes
+        indexes = list(range(nodes_num))
+        # shuffle it so we will upgrade the nodes in a random order
+        random.shuffle(indexes)
+
+        self.log.info('pre-test - Run stress workload before upgrade')
+        # complex workload: prepare write
+        self.log.info('Starting c-s complex workload (5M) to prepare data')
+        stress_cmd_complex_prepare = self.params.get('stress_cmd_complex_prepare')
+        complex_cs_thread_pool = self.run_stress_thread(
+            stress_cmd=stress_cmd_complex_prepare, profile='data_dir/complex_schema.yaml')
+
+        # wait for the complex workload to finish
+        self.verify_stress_thread(complex_cs_thread_pool)
+
+        self.log.info('Will check paged query before upgrading nodes')
+        self.paged_query()
+        self.log.info('Done checking paged query before upgrading nodes')
+
+        # prepare write workload
+        self.log.info('Starting c-s prepare write workload (n=10000000)')
+        prepare_write_stress = self.params.get('prepare_write_stress')
+        prepare_write_cs_thread_pool = self.run_stress_thread(stress_cmd=prepare_write_stress)
+        self.log.info('Sleeping for 60s to let cassandra-stress start before the upgrade...')
+        self.metric_has_data(
+            metric_query='collectd_cassandra_stress_write_gauge{type="ops", keyspace="keyspace1"}', n=5)
+
+        with ignore_upgrade_schema_errors():
+
+            step = 'Step1 - Upgrade First Node '
+            self.log.info(step)
+            # upgrade first node
+            self.db_cluster.node_to_upgrade = self.db_cluster.nodes[indexes[0]]
+            self.log.info('Upgrade Node %s begin', self.db_cluster.node_to_upgrade.name)
+            for i in range(100):
+                self.log.info(f"============= Try #{i} =============")
+                self.upgrade_node_simulator(self.db_cluster.node_to_upgrade)
+            self.log.info('Upgrade Node %s ended', self.db_cluster.node_to_upgrade.name)
+
     def test_rolling_upgrade(self):  # pylint: disable=too-many-locals,too-many-statements
         """
         Upgrade half of nodes in the cluster, and start special read workload
@@ -506,6 +593,9 @@ class UpgradeTest(FillDatabaseData):
             # upgrade first node
             self.db_cluster.node_to_upgrade = self.db_cluster.nodes[indexes[0]]
             self.log.info('Upgrade Node %s begin', self.db_cluster.node_to_upgrade.name)
+            for i in range(100):
+                self.log.info(f"============= Try #{i} =============")
+                self.upgrade_node_simulator(self.db_cluster.node_to_upgrade)
             self.upgrade_node(self.db_cluster.node_to_upgrade)
             self.log.info('Upgrade Node %s ended', self.db_cluster.node_to_upgrade.name)
             self.db_cluster.node_to_upgrade.check_node_health()
