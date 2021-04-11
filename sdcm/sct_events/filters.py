@@ -10,7 +10,7 @@
 # See LICENSE for more details.
 #
 # Copyright (c) 2020 ScyllaDB
-
+import logging
 import re
 import time
 from typing import Optional, Type, Union
@@ -18,6 +18,8 @@ from functools import cached_property
 
 from sdcm.sct_events import Severity
 from sdcm.sct_events.base import SctEvent, SctEventProtocol, BaseFilter, LogEventProtocol
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DbEventsFilter(BaseFilter):
@@ -91,6 +93,9 @@ class EventsFilter(BaseFilter):
         if self._regex:
             result &= self._regex.match(str(event)) is not None
 
+        if self.regex in [".*mutation_write_*", ".*Operation timed out for system.paxos.*", ".*Operation failed for system.paxos.*"]:
+            LOGGER.debug(f"Regex {result} found: {self._regex.match(str(event))}")
+
         return result
 
 
@@ -107,4 +112,7 @@ class EventsSeverityChangerFilter(EventsFilter):
     def eval_filter(self, event: SctEventProtocol) -> bool:
         if super().eval_filter(event) and self.new_severity:
             event.severity = self.new_severity
+            if self.regex in [".*mutation_write_*", ".*Operation timed out for system.paxos.*",
+                              ".*Operation failed for system.paxos.*"]:
+                LOGGER.debug(f"Event severity is {event.severity}")
         return False
