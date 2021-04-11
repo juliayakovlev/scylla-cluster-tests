@@ -92,3 +92,7 @@ DbEventsFilter: NORMAL
 EventsFilter: NORMAL
 EventsSeverityChangerFilter: NORMAL
 NodetoolEvent: ERROR
+WorkloadPrioritisationEvent.CpuNotHighEnough: ERROR
+WorkloadPrioritisationEvent.RatioValidationEvent: ERROR
+WorkloadPrioritisationEvent.SlaTestResult: ERROR
+WorkloadPrioritisationEvent.EmptyPrometheusData: ERROR
