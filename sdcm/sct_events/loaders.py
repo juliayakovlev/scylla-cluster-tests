@@ -145,8 +145,13 @@ class CassandraStressLogEvent(LogEvent, abstract=True):
 
 
 # Task: https://trello.com/c/kGply3WI/2718-stress-failure-should-stop-the-test-immediately
+# If error include "Operation x10 on key(s)" and NOT include "Too many in flight hints".
+# Error example:
+# java.io.IOException: Operation x10 on key(s) [334d503334304b503430]: Error executing: (OverloadedException): Queried
+# host (10.0.3.75/10.0.3.75:9042) was overloaded: Too many in flight hints: 10490670
 CassandraStressLogEvent.add_subevent_type("OperationOnKey", severity=Severity.CRITICAL,
-                                          regex=r"Operation x10 on key\(s\) \[")
+                                          regex=r".*Operation x\d\d on key\(s\) \[.*\]: .*: \(.+\): .+ \(.+\) \w+ \w+: "
+                                                r"(?!Too many in flight hints)")
 # TODO: change TooManyHintsInFlight severity to CRITICAL, when we have more stable hinted handoff
 # TODO: backpressure mechanism.
 CassandraStressLogEvent.add_subevent_type("TooManyHintsInFlight", severity=Severity.ERROR,
