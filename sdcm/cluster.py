@@ -1932,6 +1932,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             append_scylla_args += f" --smp {self.scylla_random_shards()}"
 
         if append_scylla_args:
+            append_scylla_args += ' --logger-log-level commitlog=debug'
             self.log.debug("Append following args to scylla: `%s'", append_scylla_args)
             self.remoter.sudo(
                 f"sed -i '/{append_scylla_args}/! s/SCYLLA_ARGS=\"/&{append_scylla_args} /' "
