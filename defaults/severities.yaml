@@ -92,3 +92,4 @@ DbEventsFilter: NORMAL
 EventsFilter: NORMAL
 EventsSeverityChangerFilter: NORMAL
 NodetoolEvent: ERROR
+ScyllaBenchEvent: CRITICAL

@@ -20,6 +20,7 @@ import concurrent.futures
 
 from sdcm.loader import ScyllaBenchStressExporter
 from sdcm.prometheus import nemesis_metrics_obj
+from sdcm.sct_events import Severity
 from sdcm.sct_events.loaders import ScyllaBenchEvent, SCYLLA_BENCH_ERROR_EVENTS_PATTERNS
 from sdcm.utils.common import FileFollowerThread, generate_random_string, convert_metric_to_ms
 from sdcm.stress_thread import format_stress_cmd_error
@@ -68,6 +69,7 @@ class ScyllaBenchThread:
 
         self.executor = None
         self.results_futures = []
+        self.events = []
         self.shell_marker = generate_random_string(20)
         self.max_workers = 0
 
@@ -79,7 +81,7 @@ class ScyllaBenchThread:
         for future in concurrent.futures.as_completed(self.results_futures, timeout=self.timeout):
             results.append(future.result())
 
-        for _, result in results:
+        for i, _, result in enumerate(results):
             if not result:
                 # Silently skip if stress command throwed error, since it was already reported in _run_stress
                 continue
@@ -90,9 +92,10 @@ class ScyllaBenchThread:
                 if node_cs_res:
                     ret.append(node_cs_res)
             except Exception as exc:
-                ScyllaBenchEvent.error(node="",
-                                       stress_cmd=self.stress_cmd,
-                                       errors=[f"Failed to proccess stress summary due to {exc}"]).publish()
+                event = ScyllaBenchEvent(node=self.events[i].node, stress_cmd=self.stress_cmd)
+                event.fail(parent_id=self.events[i].event_id,
+                           log_file_name="log_file_name",
+                           errors=[f"Failed to process stress summary due to {exc}"])
 
         return ret
 
@@ -123,12 +126,11 @@ class ScyllaBenchThread:
 
         return sb_summary, errors
 
-    def _run_stress_bench(self, node, loader_idx, stress_cmd, node_list):
+    def _run_stress_bench(self, node, loader_idx, stress_cmd, node_list, scylla_bench_event):
         read_gap = 480  # reads starts after write, read can look before start read time to current time using several sstables
         stress_cmd = re.sub(r"SCT_TIME", f"{int(time.time()) - read_gap}", stress_cmd)
         LOGGER.debug(f"replaced stress command {stress_cmd}")
 
-        ScyllaBenchEvent.start(node=node, stress_cmd=stress_cmd).publish()
         os.makedirs(node.logdir, exist_ok=True)
 
         log_file_name = os.path.join(node.logdir, f'scylla-bench-l{loader_idx}-{uuid.uuid4()}.log')
@@ -146,29 +148,30 @@ class ScyllaBenchThread:
                                        stress_operation=stress_cmd_opt,
                                        stress_log_filename=log_file_name,
                                        loader_idx=loader_idx), \
-                ScyllaBenchStressEventsPublisher(node=node, sb_log_filename=log_file_name):
+                ScyllaBenchStressEventsPublisher(node=node, sb_log_filename=log_file_name), \
+                scylla_bench_event:
             result = None
             try:
                 result = node.remoter.run(
                     cmd="/$HOME/go/bin/{name} -nodes {ips}".format(name=stress_cmd.strip(), ips=ips),
                     timeout=self.timeout,
                     log_file=log_file_name)
+                severity = Severity.NORMAL
             except Exception as exc:  # pylint: disable=broad-except
                 errors_str = format_stress_cmd_error(exc)
                 if "truncate: seastar::rpc::timeout_error" in errors_str:
-                    event_type = ScyllaBenchEvent.timeout
+                    severity = Severity.ERROR
                 elif self.stop_test_on_failure:
-                    event_type = ScyllaBenchEvent.failure
+                    severity = Severity.CRITICAL
                 else:
-                    event_type = ScyllaBenchEvent.error
-                event_type(
-                    node=node,
-                    stress_cmd=stress_cmd,
-                    log_file_name=log_file_name,
-                    errors=[errors_str, ],
-                ).publish()
-            else:
-                ScyllaBenchEvent.finish(node=node, stress_cmd=stress_cmd, log_file_name=log_file_name).publish()
+                    severity = Severity.ERROR
+                event = ScyllaBenchEvent(node=node, stress_cmd=self.stress_cmd)
+                event.fail(log_file_name="log_file_name",
+                           errors=[errors_str, ],
+                           severity=severity,
+                           parent_id=scylla_bench_event.event_id)
+            # In case failure/exception during the load end event get severity accordingly
+            scylla_bench_event.severity = severity
 
         return node, result
 
@@ -184,8 +187,11 @@ class ScyllaBenchThread:
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
 
         for loader_idx, loader in enumerate(loaders):
+            event = ScyllaBenchEvent(node=loader, stress_cmd=self.stress_cmd)
             self.results_futures += [self.executor.submit(self._run_stress_bench,
-                                                          *(loader, loader_idx, self.stress_cmd, self.node_list))]
+                                                          *(loader, loader_idx, self.stress_cmd, self.node_list,
+                                                            event))]
+            self.events.append(event)
             time.sleep(60)
 
         return self

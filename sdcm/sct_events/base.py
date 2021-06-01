@@ -19,6 +19,7 @@ import uuid
 import pickle
 import fnmatch
 import logging
+from enum import Enum
 from types import new_class
 from typing import \
     Any, Optional, Type, Dict, List, Tuple, Callable, Generic, TypeVar, Protocol, runtime_checkable, cast
@@ -33,7 +34,6 @@ import dateutil.parser
 from sdcm import sct_abs_path
 from sdcm.sct_events import Severity, SctEventProtocol
 from sdcm.sct_events.events_processes import EventsProcessesRegistry
-
 
 DEFAULT_SEVERITIES = sct_abs_path("defaults/severities.yaml")
 
@@ -56,6 +56,14 @@ class SctEventTypesRegistry(Dict[str, Type["SctEvent"]]):
         self[owner.__name__] = owner  # add owner class to the registry.
 
 
+class EventTypes(Enum):
+    Begin = "Begin"
+    End = "End"
+    Informational = "Informational"
+    # TODO: temporary value. Remove when refactoring will be finished
+    NotDefined = "NotDefined"
+
+
 class SctEvent:
     _sct_event_types_registry: SctEventTypesRegistry = SctEventTypesRegistry()
     _events_processes_registry: Optional[EventsProcessesRegistry] = None
@@ -65,8 +73,11 @@ class SctEvent:
     type: Optional[str] = None  # this attribute set by add_subevent_type()
     subtype: Optional[str] = None  # this attribute set by add_subevent_type()
 
+    # TODO: temporary value. Change to None when refactoring will be finished
+    category: str = EventTypes.NotDefined.value  # attribute possible values are from EventTypes enum
+
     formatter: Callable[[str, SctEvent], str] = staticmethod(str.format)
-    msgfmt: str = "({0.base} {0.severity})"
+    msgfmt: str = "({0.base} {0.severity}) category={0.category} event_id={0.event_id}"
 
     timestamp: Optional[float] = None  # actual value should be set using __init__()
     severity: Severity = Severity.UNKNOWN  # actual value should be set using __init__()
@@ -91,6 +102,7 @@ class SctEvent:
         self.timestamp = time.time()
         self.severity = severity
         self._ready_to_publish = True
+        self.event_id = str(uuid.uuid4())
 
     @classmethod
     def is_abstract(cls) -> bool:
@@ -140,7 +152,7 @@ class SctEvent:
     def formatted_timestamp(self) -> str:
         try:
             return datetime.fromtimestamp(self.timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        except (TypeError, OverflowError, OSError, ):
+        except (TypeError, OverflowError, OSError,):
             LOGGER.exception("Failed to format a timestamp: %r", self.timestamp)
             return "0000-00-00 <UnknownTimestamp>"
 
@@ -205,6 +217,83 @@ class SctEvent:
         if self._ready_to_publish:
             LOGGER.warning(
                 "[SCT internal warning] %s has not been published or dumped, maybe you missed .publish()", self)
+
+
+class InformationalEvent(SctEvent, abstract=True):
+
+    def __init__(self, severity: Severity = Severity.UNKNOWN):
+        super(InformationalEvent, self).__init__(severity=severity)
+        self.category = EventTypes.Informational.value
+
+
+class ContinuousEvent(SctEvent, abstract=True):
+
+    def __init__(self, severity: Severity = Severity.UNKNOWN):
+        super().__init__(severity=severity)
+        self.log_file_name = None
+        self.errors = None
+        self.parent_id = None
+
+    def __enter__(self):
+        event = self.begin_event()
+        event.publish()
+        return event
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        event = self.finish_event()
+        event.publish()
+
+    @property
+    def errors_formatted(self):
+        return "\n".join(self.errors) if self.errors is not None else ""
+
+    @property
+    def msgfmt(self):
+        if self.parent_id is not None:
+            return f"{super().msgfmt} parent_id={self.parent_id}"
+
+        return super().msgfmt
+
+    def begin_event(self,
+                    event_time: str = None
+                    ) -> ContinuousEvent:
+        new_event = pickle.loads(pickle.dumps(self))
+        new_event.timestamp = event_time or time.time()
+        new_event.category = EventTypes.Begin.value
+        new_event.severity = Severity.NORMAL
+        new_event._ready_to_publish = True
+        self._ready_to_publish = False
+        return new_event
+
+    def finish_event(self,
+                     event_time: str = None,
+                     severity: Severity = Severity.NORMAL
+                     ) -> ContinuousEvent:
+        new_event = pickle.loads(pickle.dumps(self))
+        new_event.timestamp = event_time or time.time()
+        new_event.category = EventTypes.End.value
+        new_event.severity = severity
+        new_event._ready_to_publish = True
+        self._ready_to_publish = False
+        return new_event
+
+    def fail(self,
+             errors: Optional[List[str]],
+             parent_id: str = None,
+             severity: Severity = Severity.ERROR,
+             log_file_name: Optional[str] = None,
+             event_time: str = None
+             ) -> None:
+        new_event = pickle.loads(pickle.dumps(self))
+        new_event.timestamp = event_time or time.time()
+        new_event.log_file_name = log_file_name
+        new_event.errors = errors
+        new_event.category = EventTypes.Informational.value
+        new_event.severity = severity
+        new_event.parent_id = parent_id
+        new_event._ready_to_publish = True
+        self._ready_to_publish = False
+        return new_event
 
 
 def add_severity_limit_rules(rules: List[str]) -> None:
@@ -291,7 +380,7 @@ class LogEventProtocol(SctEventProtocol, Protocol[T_log_event]):
         ...
 
 
-class LogEvent(Generic[T_log_event], SctEvent, abstract=True):
+class LogEvent(Generic[T_log_event], InformationalEvent, abstract=True):
     def __init__(self, regex: str, severity=Severity.ERROR):
         super().__init__(severity=severity)
 
@@ -358,7 +447,7 @@ class LogEvent(Generic[T_log_event], SctEvent, abstract=True):
         return fmt
 
 
-class BaseStressEvent(SctEvent, abstract=True):
+class BaseStressEvent(ContinuousEvent, abstract=True):
     @classmethod
     def add_stress_subevents(cls,
                              failure: Optional[Severity] = None,
@@ -407,14 +496,13 @@ class StressEvent(BaseStressEvent, abstract=True):
         self.errors = errors
 
     @property
-    def errors_formatted(self):
-        return "\n".join(self.errors)
-
-    @property
     def msgfmt(self):
-        fmt = super().msgfmt + ": type={0.type} node={0.node}\nstress_cmd={0.stress_cmd}"
+        fmt = super().msgfmt + ":"
+        if self.type:
+            fmt += " type={0.type}"
+        fmt += "  node={0.node}\nstress_cmd={0.stress_cmd}"
         if self.errors:
-            return fmt + "\nerrors:\n\n{0.errors_formatted}"
+            fmt += "\nerrors:\n\n{0.errors_formatted}"
         return fmt
 
 
