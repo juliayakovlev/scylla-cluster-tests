@@ -26,7 +26,7 @@ from distutils.version import LooseVersion
 from cassandra import InvalidRequest
 from cassandra.util import sortedset, SortedSet  # pylint: disable=no-name-in-module
 from cassandra import ConsistencyLevel
-from cassandra.protocol import ProtocolException
+from cassandra.protocol import ProtocolException  # pylint: disable=no-name-in-module
 
 from sdcm.tester import ClusterTester
 from sdcm.utils.decorators import retrying
@@ -888,7 +888,7 @@ class FillDatabaseData(ClusterTester):
                                AND compaction = { 'class' : 'LeveledCompactionStrategy',
                                                   'sstable_size_in_mb' : 10 }
                                AND compression = { 'sstable_compression' : '' }
-                               AND caching = 'all'"""],
+                               AND caching = {'keys': 'ALL', 'rows_per_partition': 'ALL'}"""],
             'truncates': ['TRUNCATE table_options_test'],
             'inserts': [],
             'queries': ["""
