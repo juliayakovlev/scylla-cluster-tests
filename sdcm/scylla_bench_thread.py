@@ -94,8 +94,8 @@ class ScyllaBenchThread:
             except Exception as exc:
                 event = ScyllaBenchEvent(node=self.events[i].node, stress_cmd=self.stress_cmd)
                 event.fail(parent_id=self.events[i].event_id,
-                           log_file_name="log_file_name",
-                           errors=[f"Failed to process stress summary due to {exc}"])
+                           errors=[f"Failed to process stress summary due to {exc}", ])
+                event.publish()
 
         return ret
 
@@ -166,12 +166,14 @@ class ScyllaBenchThread:
                 else:
                     severity = Severity.ERROR
                 event = ScyllaBenchEvent(node=node, stress_cmd=self.stress_cmd)
-                event.fail(log_file_name="log_file_name",
+                event.fail(log_file_name=log_file_name,
                            errors=[errors_str, ],
                            severity=severity,
                            parent_id=scylla_bench_event.event_id)
+                event.publish()
             # In case failure/exception during the load end event get severity accordingly
             scylla_bench_event.severity = severity
+            scylla_bench_event.log_file_name = log_file_name
 
         return node, result
 

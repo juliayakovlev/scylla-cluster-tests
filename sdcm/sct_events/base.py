@@ -240,8 +240,10 @@ class ContinuousEvent(SctEvent, abstract=True):
         return event
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        event = self.finish_event()
-        event.publish()
+        if exc_type is None:
+            event = self.finish_event()
+            event.publish()
+            return
 
     @property
     def errors_formatted(self):
@@ -267,11 +269,14 @@ class ContinuousEvent(SctEvent, abstract=True):
 
     def finish_event(self,
                      event_time: str = None,
-                     severity: Severity = Severity.NORMAL
+                     severity: Severity = Severity.NORMAL,
+                     log_file_name: str = None
                      ) -> ContinuousEvent:
         new_event = pickle.loads(pickle.dumps(self))
         new_event.timestamp = event_time or time.time()
         new_event.category = EventTypes.End.value
+        if new_event.log_file_name is None:
+            new_event.log_file_name = log_file_name
         new_event.severity = severity
         new_event._ready_to_publish = True
         self._ready_to_publish = False
