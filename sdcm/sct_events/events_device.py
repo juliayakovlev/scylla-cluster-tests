@@ -118,13 +118,20 @@ class EventsDevice(multiprocessing.Process):
                         pass
 
     def publish_event(self, event, timeout=PUBLISH_EVENT_TIMEOUT) -> None:
-        with verbose_suppress("%s: failed to write %s to %s", self, event, self.raw_events_log):
-            with self._raw_events_lock, open(self.raw_events_log, "ab+", buffering=0) as log_file:
-                log_file.write(event.to_json().encode("utf-8") + b"\n")
+        try:
+            with verbose_suppress("%s: failed to write %s to %s", self, event, self.raw_events_log):
+                with self._raw_events_lock, open(self.raw_events_log, "ab+", buffering=0) as log_file:
+                    log_file.write(event.to_json().encode("utf-8") + b"\n")
 
-        with verbose_suppress("%s: failed to publish %s", self, event):
-            self._queue.put(pickle.dumps(event), timeout=timeout)
-            self._events_counter.value += 1
+            with verbose_suppress("%s: failed to publish %s", self, event):
+                self._queue.put(pickle.dumps(event), timeout=timeout)
+                self._events_counter.value += 1
+        except Exception as e:
+            LOGGER.info(f"Failed event: {event}")
+            LOGGER.info(f"Event error: {event.errors}")
+            if hasattr(event, "result"):
+                LOGGER.info(f"Event result: {event.result}")
+            LOGGER.info(f"Failure error: {e}")
 
     def _sub_socket(self, ctx: zmq.Context) -> zmq.Socket:
         LOGGER.info("Subscribe to %s", self.subscribe_address)

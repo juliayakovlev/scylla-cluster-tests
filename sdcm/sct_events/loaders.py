@@ -28,34 +28,43 @@ from sdcm.sct_events.base import \
 LOGGER = logging.getLogger(__name__)
 
 
-class GeminiEvent(BaseStressEvent, abstract=True):
-    error: Type[SctEventProtocol]
-    warning: Type[SctEventProtocol]
-    start: Type[SctEventProtocol]
-    finish: Type[SctEventProtocol]
+class GeminiStressEvent(BaseStressEvent):
 
-    def __init__(self, cmd: str, result: Optional[Result] = None, severity: Severity = Severity.NORMAL):
+    def __init__(self, node: Any,
+                 cmd: str,
+                 log_file_name: Optional[str] = None,
+                 result: Optional[Result] = None,
+                 severity: Severity = Severity.NORMAL):
         super().__init__(severity=severity)
 
+        self.node = str(node)
         self.cmd = cmd
+        self.log_file_name = log_file_name
         self.result = ""
+        self.add_result(result)
 
+    def add_result(self, result: Optional[Result]):
         if result is not None:
             self.result += f"Exit code: {result.exited}\n"
             if result.stdout:
                 self.result += f"Command output: {result.stdout.strip().splitlines()[-2:]}\n"
             if result.stderr:
-                self.result += f"Command error: {result.stderr}\n"
+                self.add_error([f"Command error: {result.stderr}\n"])
 
     @property
     def msgfmt(self):
-        fmt = super().msgfmt + ": type={0.type} gemini_cmd={0.cmd}"
+        fmt = super().msgfmt + ":"
+        if self.type:
+            fmt += " type={0.type}"
+        fmt += " node={0.node} gemini_cmd={0.cmd}"
+
         if self.result:
-            fmt += "\n{0.result}"
+            fmt += "\nresult={0.result}"
+
+        if self.errors:
+            fmt += "\nerrors={0.errors}"
+
         return fmt
-
-
-GeminiEvent.add_stress_subevents(error=Severity.CRITICAL, warning=Severity.WARNING)
 
 
 class CassandraStressEvent(StressEvent, abstract=True):
@@ -167,7 +176,7 @@ SCYLLA_BENCH_ERROR_EVENTS_PATTERNS: List[Tuple[re.Pattern, LogEventProtocol]] = 
     [(re.compile(event.regex), event) for event in SCYLLA_BENCH_ERROR_EVENTS]
 
 
-class GeminiLogEvent(LogEvent[T_log_event], abstract=True):
+class GeminiStressLogEvent(LogEvent[T_log_event], abstract=True):
     SEVERITY_MAPPING = {
         "INFO": "NORMAL",
         "DEBUG": "NORMAL",
@@ -176,7 +185,7 @@ class GeminiLogEvent(LogEvent[T_log_event], abstract=True):
         "FATAL": "CRITICAL",
     }
 
-    geminievent: Type[LogEventProtocol]
+    GeminiEvent: Type[LogEventProtocol]
 
     def __init__(self, verbose=False):
         super().__init__(regex="", severity=Severity.CRITICAL)
@@ -214,4 +223,4 @@ class GeminiLogEvent(LogEvent[T_log_event], abstract=True):
                                         "{0.line}"
 
 
-GeminiLogEvent.add_subevent_type("geminievent")
+GeminiStressLogEvent.add_subevent_type("GeminiEvent")

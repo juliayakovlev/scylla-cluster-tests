@@ -19,44 +19,96 @@ from invoke.runners import Result
 from sdcm.sct_events import Severity
 from sdcm.sct_events.base import LogEvent
 from sdcm.sct_events.loaders import \
-    GeminiEvent, CassandraStressEvent, ScyllaBenchEvent, YcsbStressEvent, NdbenchStressEvent, CDCReaderStressEvent, \
-    KclStressEvent, CassandraStressLogEvent, ScyllaBenchLogEvent, GeminiLogEvent, \
+    GeminiStressEvent, CassandraStressEvent, ScyllaBenchEvent, YcsbStressEvent, NdbenchStressEvent, CDCReaderStressEvent, \
+    KclStressEvent, CassandraStressLogEvent, ScyllaBenchLogEvent, GeminiStressLogEvent, \
     CS_ERROR_EVENTS, SCYLLA_BENCH_ERROR_EVENTS, CS_ERROR_EVENTS_PATTERNS
 
 
 class TestGeminiEvent(unittest.TestCase):
-    def test_subevents(self):
-        self.assertFalse(hasattr(GeminiEvent, "failure"))
-        self.assertTrue(issubclass(GeminiEvent.error, GeminiEvent))
-        self.assertFalse(hasattr(GeminiEvent, "timeout"))
-        self.assertTrue(issubclass(GeminiEvent.start, GeminiEvent))
-        self.assertTrue(issubclass(GeminiEvent.finish, GeminiEvent))
+    def test_exception(self):
+        begin_event_timestamp = 1623596860.1202102
+        gemini_bench_event = GeminiStressEvent(node="node", cmd="gemini_cmd")
+        gemini_bench_event.event_id = "14f35b64-2fcc-4b6e-a09d-4aeaf4faa543"
+        gemini_bench_event.timestamp = begin_event_timestamp
+        gemini_bench_event.begin_event(publish=False)
+        self.assertEqual(str(gemini_bench_event),
+                         '(GeminiStressEvent Severity.NORMAL) period_type=begin '
+                         'event_id=14f35b64-2fcc-4b6e-a09d-4aeaf4faa543: node=node gemini_cmd=gemini_cmd'
+                         )
+        try:
+            raise ValueError(
+                'Stress command completed with bad status 1')
+        except ValueError as e:
+            gemini_bench_event.severity = Severity.ERROR
+            gemini_bench_event.add_error([str(e)])
 
-    def test_without_result(self):
-        event = GeminiEvent.start(cmd="cat")
-        self.assertEqual(event.severity, Severity.NORMAL)
-        self.assertEqual(event.cmd, "cat")
-        self.assertEqual(event.result, "")
-        event.event_id = "8628037b-ddb8-4e24-a595-4ecbc024b786"
-        self.assertEqual(str(event),
-                         "(GeminiEvent Severity.NORMAL) period_type=not-set "
-                         "event_id=8628037b-ddb8-4e24-a595-4ecbc024b786: type=start gemini_cmd=cat")
-        self.assertEqual(event, pickle.loads(pickle.dumps(event)))
+        gemini_bench_event.end_event(publish=False)
 
-    def test_with_result(self):
-        event = GeminiEvent.error(cmd="cat",
-                                  result=Result(stdout="  \n\nline1\n  line2  \nline3\n  ", stderr="\terr\t", exited=1))
-        self.assertEqual(event.severity, Severity.CRITICAL)
-        self.assertEqual(event.cmd, "cat")
+        self.assertEqual(str(gemini_bench_event),
+                         '(GeminiStressEvent Severity.ERROR) period_type=end '
+                         'event_id=14f35b64-2fcc-4b6e-a09d-4aeaf4faa543: node=node gemini_cmd=gemini_cmd'
+                         )
 
-        result = "Exit code: 1\nCommand output: ['  line2  ', 'line3']\nCommand error: \terr\t\n"
-        self.assertEqual(event.result, result)
-        event.event_id = "23a03d37-ec69-4629-a2e8-a8d787ce7bd8"
-        self.assertEqual(str(event),
-                         "(GeminiEvent Severity.CRITICAL) period_type=not-set "
-                         "event_id=23a03d37-ec69-4629-a2e8-a8d787ce7bd8: type=error gemini_cmd=cat\n" + result)
+        self.assertEqual(gemini_bench_event, pickle.loads(pickle.dumps(gemini_bench_event)))
 
-        self.assertEqual(event, pickle.loads(pickle.dumps(event)))
+    def test_continuous_event(self):
+        gemini_bench_event = GeminiStressEvent(node="node", cmd="gemini_cmd")
+        # gemini_bench_event = GeminiStressEvent(node="node", cmd="gemini_cmd")
+        begin_event_timestamp = 1623596860.1202102
+        gemini_bench_event.event_id = "14f35b64-2fcc-4b6e-a09d-4aeaf4faa543"
+        begin_event = gemini_bench_event.begin_event(publish=False)
+        begin_event.timestamp = begin_event_timestamp
+        self.assertEqual(str(begin_event),
+                         '(GeminiStressEvent Severity.NORMAL) period_type=begin '
+                         'event_id=14f35b64-2fcc-4b6e-a09d-4aeaf4faa543: node=node gemini_cmd=gemini_cmd')
+        self.assertEqual(begin_event.timestamp, begin_event_timestamp)
+        self.assertEqual(begin_event, pickle.loads(pickle.dumps(gemini_bench_event)))
+
+        gemini_bench_event.add_error(errors=["error1", "error2"])
+        gemini_bench_event.severity = Severity.ERROR
+
+        gemini_bench_event.end_event(publish=False)
+        gemini_bench_event.timestamp = 1623597850.6610544
+        self.assertEqual(str(gemini_bench_event),
+                         '(GeminiStressEvent Severity.ERROR) period_type=end '
+                         'event_id=14f35b64-2fcc-4b6e-a09d-4aeaf4faa543: node=node gemini_cmd=gemini_cmd')
+        self.assertEqual(gemini_bench_event, pickle.loads(pickle.dumps(gemini_bench_event)))
+    # def test_without_result(self):
+    #     event = GeminiStressEvent.start(cmd="cat")
+    #     self.assertEqual(event.severity, Severity.NORMAL)
+    #     self.assertEqual(event.cmd, "cat")
+    #     self.assertEqual(event.result, "")
+    #     event.event_id = "8628037b-ddb8-4e24-a595-4ecbc024b786"
+    #     self.assertEqual(str(event),
+    #                      "(GeminiStressEvent Severity.NORMAL) period_type=not-set "
+    #                      "event_id=8628037b-ddb8-4e24-a595-4ecbc024b786: type=start gemini_cmd=cat")
+    #     self.assertEqual(event, pickle.loads(pickle.dumps(event)))
+
+    def test_continuous_event_with_result(self):
+        gemini_bench_event = GeminiStressEvent(node="node", cmd="cat")
+        begin_event_timestamp = 1623596860.1202102
+        gemini_bench_event.event_id = "14f35b64-2fcc-4b6e-a09d-4aeaf4faa543"
+        begin_event = gemini_bench_event.begin_event(publish=False)
+        begin_event.timestamp = begin_event_timestamp
+        self.assertEqual(str(begin_event),
+                         '(GeminiStressEvent Severity.NORMAL) period_type=begin '
+                         'event_id=14f35b64-2fcc-4b6e-a09d-4aeaf4faa543: node=node gemini_cmd=cat')
+        self.assertEqual(begin_event.timestamp, begin_event_timestamp)
+        self.assertEqual(begin_event, pickle.loads(pickle.dumps(begin_event)))
+
+        gemini_bench_event.add_result(result=Result(stdout="  \n\nline1\n  line2  \nline3\n  ",
+                                                    stderr="\terr\t", exited=1))
+
+        result = "Exit code: 1\nCommand output: ['  line2  ', 'line3']\n"
+        gemini_bench_event.end_event(publish=False)
+        self.assertEqual(gemini_bench_event.result, result)
+        self.assertEqual(str(gemini_bench_event),
+                         '(GeminiStressEvent Severity.NORMAL) period_type=end '
+                         'event_id=14f35b64-2fcc-4b6e-a09d-4aeaf4faa543: node=node gemini_cmd=cat\n'
+                         'result=Exit code: 1\nCommand output: [\'  line2  \', \'line3\']\n\n'
+                         'errors=[\'Command error: \\terr\\t\\n\']')
+
+        self.assertEqual(gemini_bench_event, pickle.loads(pickle.dumps(gemini_bench_event)))
 
 
 class TestCassandraStressEvent(unittest.TestCase):
@@ -364,7 +416,7 @@ class TestScyllaBenchLogEvent(unittest.TestCase):
 
 class TestGeminiLogEvent(unittest.TestCase):
     def test_json_line(self):
-        event = GeminiLogEvent.geminievent()
+        event = GeminiStressLogEvent.GeminiEvent()
         event.add_info(
             node="node1",
             line='{"L":"INFO","T":"2020-06-09T03:40:39.349Z","N":"pump","M":"Test run stopped. Exiting."}',
@@ -381,14 +433,14 @@ class TestGeminiLogEvent(unittest.TestCase):
         event.event_id = "3eaf9cb2-b54b-43f5-8472-d0fbf5c25f72"
         self.assertEqual(
             str(event),
-            '(GeminiLogEvent Severity.NORMAL) period_type=one-time event_id=3eaf9cb2-b54b-43f5-8472-d0fbf5c25f72: '
-            'type=geminievent line_number=1 node=node1\n'
+            '(GeminiStressLogEvent Severity.NORMAL) period_type=one-time event_id=3eaf9cb2-b54b-43f5-8472-d0fbf5c25f72: '
+            'type=GeminiEvent line_number=1 node=node1\n'
             'Test run stopped. Exiting. (N="pump")',
         )
         self.assertEqual(event, pickle.loads(pickle.dumps(event)))
 
     def test_non_json_line(self):
-        event = GeminiLogEvent.geminievent()
+        event = GeminiStressLogEvent.GeminiEvent()
         timestamp = event.timestamp
         event.add_info(node="node1", line="1961-04-12T06:07:00+00:00 Poyekhalee!", line_number=1)
         self.assertEqual(event.timestamp, timestamp)
@@ -402,7 +454,7 @@ class TestGeminiLogEvent(unittest.TestCase):
         event.event_id = "3ce0cdeb-0866-40ce-9a20-25ea3ae08be2"
         self.assertEqual(
             str(event),
-            "(GeminiLogEvent Severity.CRITICAL) period_type=one-time event_id=3ce0cdeb-0866-40ce-9a20-25ea3ae08be2: "
-            "type=geminievent line_number=0 node=None\nNone",
+            "(GeminiStressLogEvent Severity.CRITICAL) period_type=one-time event_id=3ce0cdeb-0866-40ce-9a20-25ea3ae08be2: "
+            "type=GeminiEvent line_number=0 node=None\nNone",
         )
         self.assertEqual(event, pickle.loads(pickle.dumps(event)))
