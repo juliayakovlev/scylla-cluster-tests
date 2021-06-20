@@ -55,9 +55,6 @@ CDCReaderStressEvent.failure: CRITICAL
 CDCReaderStressEvent.error: ERROR
 CDCReaderStressEvent.start: NORMAL
 CDCReaderStressEvent.finish: NORMAL
-KclStressEvent.failure: ERROR
-KclStressEvent.start: NORMAL
-KclStressEvent.finish: NORMAL
 CassandraStressLogEvent.IOException: ERROR
 CassandraStressLogEvent.ConsistencyError: ERROR
 CassandraStressLogEvent.OperationOnKey: CRITICAL
@@ -89,3 +86,4 @@ EventsSeverityChangerFilter: NORMAL
 NodetoolEvent: ERROR
 ScyllaBenchEvent: CRITICAL
 CassandraStressEvent: CRITICAL
+KclStressEvent: CRITICAL

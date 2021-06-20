@@ -100,13 +100,14 @@ class NdbenchStressEvent(StressEvent, abstract=True):
 NdbenchStressEvent.add_stress_subevents(failure=Severity.CRITICAL, error=Severity.ERROR)
 
 
-class KclStressEvent(StressEvent, abstract=True):
-    failure: Type[StressEventProtocol]
-    start: Type[StressEventProtocol]
-    finish: Type[StressEventProtocol]
-
-
-KclStressEvent.add_stress_subevents(failure=Severity.ERROR)
+class KclStressEvent(StressEvent):
+    ...
+#     failure: Type[StressEventProtocol]
+#     start: Type[StressEventProtocol]
+#     finish: Type[StressEventProtocol]
+#
+#
+# KclStressEvent.add_stress_subevents(failure=Severity.ERROR)
 
 
 class CassandraStressLogEvent(LogEvent, abstract=True):
