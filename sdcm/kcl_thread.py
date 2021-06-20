@@ -18,6 +18,7 @@ import logging
 import uuid
 import threading
 
+from sdcm.sct_events import Severity
 from sdcm.stress_thread import format_stress_cmd_error, DockerBasedStressThread
 from sdcm.utils.docker_remote import RemoteDocker
 from sdcm.sct_events.system import InfoEvent
@@ -64,27 +65,20 @@ class KclStressThread(DockerBasedStressThread):  # pylint: disable=too-many-inst
 
         node_cmd = 'cd /hydra-kcl && {}'.format(node_cmd)
 
-        KclStressEvent.start(node=loader, stress_cmd=stress_cmd).publish()
+        with KclStressEvent(node=loader, stress_cmd=stress_cmd,
+                            log_file_name=log_file_name) as kcl_bench_event:
+            try:
+                result = docker.run(cmd=node_cmd,
+                                    timeout=self.timeout + self.shutdown_timeout,
+                                    log_file=log_file_name,
+                                    )
 
-        try:
-            result = docker.run(cmd=node_cmd,
-                                timeout=self.timeout + self.shutdown_timeout,
-                                log_file=log_file_name,
-                                )
+                return result
 
-            return result
-
-        except Exception as exc:  # pylint: disable=broad-except
-            errors_str = format_stress_cmd_error(exc)
-            KclStressEvent.failure(
-                node=loader,
-                stress_cmd=self.stress_cmd,
-                log_file_name=log_file_name,
-                errors=[errors_str, ],
-            ).publish()
-            raise
-        finally:
-            KclStressEvent.finish(node=loader, stress_cmd=stress_cmd, log_file_name=log_file_name).publish()
+            except Exception as exc:  # pylint: disable=broad-except
+                kcl_bench_event.severity = Severity.ERROR
+                kcl_bench_event.add_error(errors=[format_stress_cmd_error(exc)])
+                raise
 
 
 class CompareTablesSizesThread(DockerBasedStressThread):  # pylint: disable=too-many-instance-attributes
@@ -104,42 +98,40 @@ class CompareTablesSizesThread(DockerBasedStressThread):  # pylint: disable=too-
         return node_to_query
 
     def _run_stress(self, loader, loader_idx, cpu_idx):
-        KclStressEvent.start(node=loader, stress_cmd=self.stress_cmd).publish()
-        try:
-            options_str = self.stress_cmd.replace('table_compare', '').strip()
-            options = dict(item.strip().split("=") for item in options_str.split(";"))
-            interval = int(options.get('interval', 20))
-            timeout = int(options.get('timeout', 28800))
-            src_table = options.get('src_table')
-            dst_table = options.get('dst_table')
-            start_time = time.time()
+        with KclStressEvent(node=loader, stress_cmd=self.stress_cmd) as kcl_bench_event:
+            try:
+                options_str = self.stress_cmd.replace('table_compare', '').strip()
+                options = dict(item.strip().split("=") for item in options_str.split(";"))
+                interval = int(options.get('interval', 20))
+                timeout = int(options.get('timeout', 28800))
+                src_table = options.get('src_table')
+                dst_table = options.get('dst_table')
+                start_time = time.time()
 
-            while not self._stop_event.is_set():
-                node: BaseNode = self.db_node_to_query(loader)
-                node.running_nemesis = "Compare tables size by cf-stats"
-                node.run_nodetool('flush')
+                while not self._stop_event.is_set():
+                    node: BaseNode = self.db_node_to_query(loader)
+                    node.running_nemesis = "Compare tables size by cf-stats"
+                    node.run_nodetool('flush')
 
-                dst_size = node.get_cfstats(dst_table)['Number of partitions (estimate)']
-                src_size = node.get_cfstats(src_table)['Number of partitions (estimate)']
+                    dst_size = node.get_cfstats(dst_table)['Number of partitions (estimate)']
+                    src_size = node.get_cfstats(src_table)['Number of partitions (estimate)']
 
-                node.running_nemesis = None
-                elapsed_time = time.time() - start_time
-                status = f"== CompareTablesSizesThread: dst table/src table number of partitions: {dst_size}/{src_size} =="
-                LOGGER.info(status)
-                status_msg = f'[{elapsed_time}/{timeout}] {status}'
-                InfoEvent(status_msg).publish()
+                    node.running_nemesis = None
+                    elapsed_time = time.time() - start_time
+                    status = f"== CompareTablesSizesThread: dst table/src table number of partitions: {dst_size}/{src_size} =="
+                    LOGGER.info(status)
+                    status_msg = f'[{elapsed_time}/{timeout}] {status}'
+                    InfoEvent(status_msg).publish()
 
-                if src_size == 0:
-                    continue
-                if elapsed_time > timeout:
-                    InfoEvent(f"== CompareTablesSizesThread: exiting on timeout of {timeout}").publish()
-                    break
-                time.sleep(interval)
-            return None
+                    if src_size == 0:
+                        continue
+                    if elapsed_time > timeout:
+                        InfoEvent(f"== CompareTablesSizesThread: exiting on timeout of {timeout}").publish()
+                        break
+                    time.sleep(interval)
+                return None
 
-        except Exception as exc:  # pylint: disable=broad-except
-            errors_str = format_stress_cmd_error(exc)
-            KclStressEvent.failure(node=loader, stress_cmd=self.stress_cmd, errors=[errors_str, ]).publish()
-            raise
-        finally:
-            KclStressEvent.finish(node=loader).publish()
+            except Exception as exc:  # pylint: disable=broad-except
+                kcl_bench_event.severity = Severity.ERROR
+                kcl_bench_event.add_error(errors=[format_stress_cmd_error(exc)])
+                raise
