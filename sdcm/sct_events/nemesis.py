@@ -11,42 +11,46 @@
 #
 # Copyright (c) 2020 ScyllaDB
 
-from sdcm.sct_events import Severity
-from sdcm.sct_events.base import SctEvent
+from sdcm.sct_events.base import ContinuousEvent
 
 
-class DisruptionEvent(SctEvent):
+class DisruptionEvent(ContinuousEvent):
     def __init__(self,
-                 type,
-                 subtype,
-                 status,
-                 node=None,
-                 start=None,
-                 end=None,
-                 duration=None,
-                 error=None,
-                 full_traceback=None,
+                 nemesis_name,
+                 # subtype,
+                 severity,
+                 node,
+                 publish_event=True,
+                 # error=None,
+                 # full_traceback=None,
                  **kwargs):  # pylint: disable=redefined-builtin,too-many-arguments
-        super().__init__(severity=Severity.NORMAL if status else Severity.ERROR)
+        super().__init__(severity=severity, publish_event=publish_event)
 
-        self.type = type
-        self.subtype = subtype
+        self.nemesis_name = nemesis_name
+        # self.subtype = subtype
         self.node = str(node)
-        self.start = start
-        self.end = end
-        self.duration = duration
+        # self.start = start
+        # self.end = end
+        self.duration = None
 
-        self.error = None
+        # self.error = None
         self.full_traceback = ""
-        if error:
-            self.error = error
-            self.full_traceback = str(full_traceback)
-
-        self.__dict__.update(kwargs)
+        # self.skip_reason = ""
+        # if error:
+        #     self.error = error
+        #     self.full_traceback = str(full_traceback)
+        self.kwargs = kwargs
+        self.__dict__.update(self.kwargs)
 
     @property
     def msgfmt(self) -> str:
-        fmt = super().msgfmt + ": type={0.type} subtype={0.subtype} target_node={0.node} duration={0.duration}"
-        if self.severity == Severity.ERROR:
-            fmt += " error={0.error}\n{0.full_traceback}"
+        fmt = super().msgfmt + ": nemesis_name={0.nemesis_name} target_node={0.node}"
+        if self.skip_reason:
+            fmt += " skip_reason={0.skip_reason}"
+        if self.errors:
+            fmt += " errors={0.errors}"
+        if self.full_traceback:
+            fmt += "\n{0.full_traceback}"
+        # if self.severity == Severity.ERROR:
+        #     fmt += " error={0.error}\n{0.full_traceback}"
         return fmt

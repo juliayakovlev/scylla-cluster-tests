@@ -2628,7 +2628,6 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
 
                 if coredump_on_timeout and isinstance(details, CommandTimedOut):
                     self.generate_coredump_file()
-
                 nodetool_event.add_error([f"{error_message}{str(details)}"])
                 nodetool_event.full_traceback = traceback.format_exc()
                 raise
