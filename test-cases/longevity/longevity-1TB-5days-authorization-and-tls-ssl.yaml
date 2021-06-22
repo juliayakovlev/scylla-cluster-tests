@@ -22,15 +22,15 @@ n_monitor_nodes: 1
 
 instance_type_db: 'i3.4xlarge'
 gce_instance_type_db: 'n1-highmem-16'
-gce_n_local_ssd_disk_db: 6
+gce_n_local_ssd_disk_db: 16
 
 instance_type_loader: 'c5.4xlarge'
 gce_instance_type_loader: 'c2-standard-16'
 scylla_repo_loader: 'https://s3.amazonaws.com/downloads.scylladb.com/rpm/centos/scylla-4.3.repo'
 
 
-nemesis_class_name: 'ChaosMonkey'
-nemesis_interval: 30
+nemesis_class_name: 'CorruptThenRebuildMonkey'
+nemesis_interval: 10
 nemesis_filter_seeds: false
 seeds_num: 2
 

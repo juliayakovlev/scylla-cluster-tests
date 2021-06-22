@@ -256,6 +256,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         else:
             self.target_node = random.choice(nodes)
 
+        self.target_node = nodes[2]
+
         self.set_current_running_nemesis(node=self.target_node)
         self.log.info('Current Target: %s with running nemesis: %s',
                       self.target_node, self.target_node.running_nemesis)
