@@ -292,6 +292,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.log.info('Times executed: %s', len(self.duration_list))
         self.log.info('Unexpected errors: %s', len(self.error_list))
         self.log.info('Operation log:')
+
         for operation in self.operation_log:
             self.log.info(operation)
 

@@ -35,7 +35,6 @@ class DisruptionEvent(SctEvent):
         self.start = start
         self.end = end
         self.duration = duration
-
         self.error = None
         self.full_traceback = ""
         if error:
