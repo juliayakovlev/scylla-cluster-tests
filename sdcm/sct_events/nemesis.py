@@ -28,7 +28,6 @@ class DisruptionEvent(SctEvent):
                  full_traceback=None,
                  **kwargs):  # pylint: disable=redefined-builtin,too-many-arguments
         super().__init__(severity=Severity.NORMAL if status else Severity.ERROR)
-
         self.type = type
         self.subtype = subtype
         self.node = str(node)
