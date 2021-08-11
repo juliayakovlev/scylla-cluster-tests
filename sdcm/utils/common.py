@@ -67,6 +67,7 @@ from packaging.version import Version
 from sdcm.utils.aws_utils import EksClusterCleanupMixin
 from sdcm.utils.ssh_agent import SSHAgent
 from sdcm.utils.decorators import retrying
+from sdcm.utils.decorators import timeout as timeout_decor
 from sdcm import wait
 from sdcm.utils.ldap import LDAP_PASSWORD, LDAP_USERS, DEFAULT_PWD_SUFFIX, SASLAUTHD_AUTHENTICATOR
 from sdcm.utils.gce_utils import get_gce_service
@@ -75,7 +76,6 @@ from sdcm.utils.docker_utils import ContainerManager
 from sdcm.utils.gce_utils import GcloudContainerMixin
 from sdcm.remote import LocalCmdRunner
 from sdcm.remote import RemoteCmdRunnerBase
-
 
 LOGGER = logging.getLogger('utils')
 DEFAULT_AWS_REGION = "eu-west-1"
@@ -104,7 +104,8 @@ def _remote_get_file(remoter, src, dst, user_agent=None):
     return remoter.run(cmd, ignore_status=True)
 
 
-def remote_get_file(remoter, src, dst, hash_expected=None, retries=1, user_agent=None):  # pylint: disable=too-many-arguments
+def remote_get_file(remoter, src, dst, hash_expected=None, retries=1,
+                    user_agent=None):  # pylint: disable=too-many-arguments
     _remote_get_file(remoter, src, dst, user_agent)
     if not hash_expected:
         return
@@ -187,7 +188,6 @@ def verify_scylla_repo_file(content, is_rhel_like=True):
 
 
 class S3Storage():
-
     bucket_name = 'cloudius-jenkins-test'
     enable_multipart_threshold_size = 1024 * 1024 * 1024  # 1GB
     multipart_chunksize = 50 * 1024 * 1024  # 50 MB
@@ -197,9 +197,10 @@ class S3Storage():
         if bucket:
             self.bucket_name = bucket
         self._bucket: S3ServiceResource.Bucket = boto3.resource("s3").Bucket(name=self.bucket_name)
-        self.transfer_config = boto3.s3.transfer.TransferConfig(multipart_threshold=self.enable_multipart_threshold_size,
-                                                                multipart_chunksize=self.multipart_chunksize,
-                                                                num_download_attempts=self.num_download_attempts)
+        self.transfer_config = boto3.s3.transfer.TransferConfig(
+            multipart_threshold=self.enable_multipart_threshold_size,
+            multipart_chunksize=self.multipart_chunksize,
+            num_download_attempts=self.num_download_attempts)
 
     def get_s3_fileojb(self, key):
         objects = []
@@ -401,6 +402,7 @@ class ParallelObject:
                 return_val = fun(*args, **kwargs)
                 LOGGER.debug("[{thread_name}] Done.".format(thread_name=thread_name))
                 return return_val
+
             return inner
 
         results = []
@@ -890,7 +892,6 @@ def get_gce_driver():
 
 
 def get_all_gce_regions():
-
     compute_engine = get_gce_driver()
     all_gce_regions = [region_obj.name for region_obj in compute_engine.region_list]
     return all_gce_regions
@@ -917,7 +918,7 @@ def filter_gce_by_tags(tags_dict, instances):
     return filtered_instances
 
 
-def list_instances_gce(tags_dict=None, running=False, verbose=False) -> list[Node]:
+def list_instances_gce(tags_dict=None, running=False, verbose=False) -> List[Node]:
     """
     list all instances with specific tags GCE
 
@@ -964,7 +965,6 @@ def list_static_ips_gce(region_name="all", group_by_region=False, verbose=False)
 
 
 def list_clusters_gke(tags_dict: Optional[dict] = None, verbose: bool = False) -> list:
-
     class GkeCluster:
         def __init__(self, cluster_info: dict, cleaner: "GkeCleaner"):
             self.cluster_info = cluster_info
@@ -1035,7 +1035,6 @@ class EksCluster(EksClusterCleanupMixin):
 
 
 def list_clusters_eks(tags_dict: Optional[dict] = None, verbose: bool = False) -> List[EksCluster]:
-
     class EksCleaner:
         name = f"eks-cleaner-{uuid.uuid4()!s:.8}"
         _containers = {}
@@ -1072,7 +1071,8 @@ def list_clusters_eks(tags_dict: Optional[dict] = None, verbose: bool = False) -
 
 
 def filter_k8s_clusters_by_tags(tags_dict: dict,
-                                clusters: list[Union["EksCluster", "GkeCluster"]]) -> list[Union["EksCluster", "GkeCluster"]]:
+                                clusters: List[Union["EksCluster", "GkeCluster"]]) -> List[
+    Union["EksCluster", "GkeCluster"]]:
     if "NodeType" in tags_dict and tags_dict.get("NodeType") != "k8s":
         return []
 
@@ -1100,6 +1100,7 @@ def clean_instances_gce(tags_dict, dry_run=False):
             # https://libcloud.readthedocs.io/en/latest/compute/api.html#libcloud.compute.base.Node.destroy
             res = instance.destroy()
             LOGGER.info("%s deleted=%s", instance.name, res)
+
     ParallelObject(gce_instances_to_clean, timeout=60).run(delete_instance, ignore_exceptions=True)
 
 
@@ -1119,6 +1120,7 @@ def clean_clusters_gke(tags_dict: dict, dry_run: bool = False) -> None:
                 LOGGER.info("%s deleted=%s", cluster.name, res)
             except Exception as exc:  # pylint: disable=broad-except
                 LOGGER.error(exc)
+
     ParallelObject(gke_clusters_to_clean, timeout=180).run(delete_cluster, ignore_exceptions=True)
 
 
@@ -1138,6 +1140,7 @@ def clean_clusters_eks(tags_dict: dict, dry_run: bool = False) -> None:
                 LOGGER.info("%s deleted=%s", cluster.name, res)
             except Exception as exc:  # pylint: disable=broad-except
                 LOGGER.error(exc)
+
     ParallelObject(eks_clusters_to_clean, timeout=180).run(delete_cluster, ignore_exceptions=True)
 
 
@@ -1199,8 +1202,9 @@ def get_s3_scylla_repos_mapping(dist_type='centos', dist_version=None):
             if filename.startswith('scylla-') and filename.endswith('.repo'):
                 version_prefix = filename.replace('.repo', '').split('-')[-1]
                 _S3_SCYLLA_REPOS_CACHE[(
-                    dist_type, dist_version)][version_prefix] = "https://s3.amazonaws.com/{bucket}/{path}".format(bucket=bucket,
-                                                                                                                  path=repo_file['Key'])
+                    dist_type, dist_version)][version_prefix] = "https://s3.amazonaws.com/{bucket}/{path}".format(
+                    bucket=bucket,
+                    path=repo_file['Key'])
 
     elif dist_type in ('ubuntu', 'debian'):
         response = s3_client.list_objects(Bucket=bucket, Prefix='deb/{}/'.format(dist_type), Delimiter='/')
@@ -1209,11 +1213,11 @@ def get_s3_scylla_repos_mapping(dist_type='centos', dist_version=None):
 
             # only if path look like 'deb/debian/scylla-3.0-jessie.list', we deem it formal one
             if filename.startswith('scylla-') and filename.endswith('-{}.list'.format(dist_version)):
-
                 version_prefix = filename.replace('-{}.list'.format(dist_version), '').split('-')[-1]
                 _S3_SCYLLA_REPOS_CACHE[(
-                    dist_type, dist_version)][version_prefix] = "https://s3.amazonaws.com/{bucket}/{path}".format(bucket=bucket,
-                                                                                                                  path=repo_file['Key'])
+                    dist_type, dist_version)][version_prefix] = "https://s3.amazonaws.com/{bucket}/{path}".format(
+                    bucket=bucket,
+                    path=repo_file['Key'])
 
     else:
         raise NotImplementedError("[{}] is not yet supported".format(dist_type))
@@ -1375,6 +1379,7 @@ class version():  # pylint: disable=invalid-name,too-few-public-methods
                     func.__name__,
                     cls_self.version,
                     cls_self.__class__.__name__))
+
         return inner
 
 
@@ -1395,7 +1400,7 @@ def get_my_ip():
     return ip
 
 
-@retrying(n=60, sleep_time=5, allowed_exceptions=(OSError, ))
+@retrying(n=60, sleep_time=5, allowed_exceptions=(OSError,))
 def wait_for_port(host, port):
     socket.create_connection((host, port)).close()
 
@@ -1453,7 +1458,7 @@ def get_branched_repo(scylla_version: str,
     if dist_type == "centos":
         prefix = f"unstable/scylla/{branch}/rpm/centos/{branch_version}/"
         filename = "scylla.repo"
-    elif dist_type in ("ubuntu", "debian", ):
+    elif dist_type in ("ubuntu", "debian",):
         prefix = f"unstable/scylla/{branch}/deb/unified/{branch_version}/scylladb-master/"
         filename = "scylla.list"
     else:
@@ -1552,6 +1557,7 @@ def get_db_tables(session, ks, with_compact_storage=True):
         elif ("with compact storage" in table_code.lower()) == with_compact_storage:
             output.append(table)
     return output
+
 
 # Add @retrying to prevent situation when nemesis failed on connection timeout when try to receive the
 # keyspace and table for the test
@@ -1819,7 +1825,6 @@ def list_builders(running=False):
 
 
 def get_builder_by_test_id(test_id):
-
     base_path_on_builder = "/home/jenkins/slave/workspace"
     found_builders = []
 
@@ -1899,7 +1904,6 @@ def clean_resources_according_post_behavior(params, config, logdir, dry_run=Fals
 
 
 def search_test_id_in_latest(logdir):
-
     test_id = None
     result = LocalCmdRunner().run('cat {0}/latest/test_id'.format(logdir), ignore_status=True)
     if not result.exited and result.stdout:
@@ -1912,7 +1916,6 @@ def search_test_id_in_latest(logdir):
 
 
 def get_testrun_dir(base_dir, test_id=None):
-
     if not test_id:
         test_id = search_test_id_in_latest(base_dir)
     LOGGER.info('Search dir with logs locally for test id: %s', test_id)
@@ -2063,6 +2066,7 @@ class PageFetcher:
 
         Raises RuntimeError if seconds is exceeded.
         """
+
         def error_message(msg):
             return "{}. Requested: {}; retrieved: {}; empty retrieved {}".format(
                 msg, self.requested_pages, self.retrieved_pages, self.retrieved_empty_pages)
@@ -2213,6 +2217,7 @@ def convert_metric_to_ms(metric: str) -> float:
         "950µs"
         "30ms"
     """
+
     def _convert_to_ms(units, value):
         if not value:
             return 0
@@ -2420,3 +2425,165 @@ def clear_out_all_exit_hooks():
       teardown.
     """
     threading._threading_atexits.clear()  # pylint: disable=protected-access
+
+
+class LoadUtils:
+    LOAD_AND_STREAM_RUN_EXPR = r'storage_service - load_and_stream:'
+    LOAD_AND_STREAM_DONE_EXPR = r'storage_service - Done loading new SSTables for keyspace={}, table={}, ' \
+                                r'load_and_stream=true.*status=(.*)'
+
+    @staticmethod
+    def calculate_columns_count_in_table(target_node, keyspace_name: str = 'keyspace1',
+                                         table_name: str = 'standard1') -> int:
+        query_cmd = f"SELECT * FROM {keyspace_name}.{table_name} LIMIT 1"
+        result = target_node.run_cqlsh(query_cmd)
+        return len(re.findall(r"(\| C\d+)", result.stdout))
+
+    @staticmethod
+    def get_random_item(items: list, pop: bool = False) -> Any:
+        if pop:
+            return items.pop(random.randint(0, len(items) - 1))
+
+        return items[random.randint(0, len(items) - 1)]
+
+    def distribute_test_files_to_cluster_nodes(self, nodes, test_data: list) -> List:
+        """
+        Distribute test sstables over cluster nodes for `load-and-stream` test:
+        the feature allow loading arbitrary sstables that do not belong to a node into the cluster.
+        So we want to distribute sstables randomly.
+        Also add case when the 50% sstables of node2 (from test data cluster) will be loaded on the one node
+        and other 50% - on another
+        """
+        # Load 50% of node2's sstables to the different cluster nodes
+        map_files_to_node = [[test_data.pop(1), self.get_random_item(nodes)],
+                             [test_data.pop(1), self.get_random_item(nodes)]
+                             ]
+
+        invariant, mod = divmod(len(test_data), len(nodes))
+        while test_data:
+            if invariant:
+                for _ in range(len(nodes)):
+                    node_to_load_to = self.get_random_item(nodes)
+                    for _ in range(invariant):
+                        map_files_to_node.append([self.get_random_item(test_data, pop=True), node_to_load_to])
+
+            if mod:
+                for _ in range(len(test_data)):
+                    node_to_load_to = self.get_random_item(nodes)
+                    map_files_to_node.append([self.get_random_item(test_data, pop=True), node_to_load_to])
+
+        return map_files_to_node
+
+    @staticmethod
+    def upload_sstables(node, test_data: namedtuple, keyspace_name: str = 'keyspace1'):
+        key_store = KeyStore()
+        creds = key_store.get_scylladb_upload_credentials()
+        # Download the sstable files from S3
+        remote_get_file(node.remoter, test_data.sstable_url, test_data.sstable_file,
+                        hash_expected=test_data.sstable_md5, retries=2,
+                        user_agent=creds['user_agent'])
+        result = node.remoter.sudo(f"ls -t /var/lib/scylla/data/{keyspace_name}/")
+        upload_dir = result.stdout.split()[0]
+        if node.is_docker():
+            node.remoter.run(f'tar xvfz {test_data.sstable_file} -C /'
+                             f'var/lib/scylla/data/{keyspace_name}/{upload_dir}/upload/')
+        else:
+            node.remoter.sudo(
+                f'tar xvfz {test_data.sstable_file} -C /var/lib/scylla/data/{keyspace_name}/{upload_dir}/upload/',
+                user='scylla')
+
+        # Scylla Enterprise 2019.1 doesn't support to load schema.cql and manifest.json, let's remove them
+        node.remoter.sudo(f'rm -f /var/lib/scylla/data/{keyspace_name}/{upload_dir}/upload/schema.cql')
+        node.remoter.sudo(f'rm -f /var/lib/scylla/data/{keyspace_name}/{upload_dir}/upload/manifest.json')
+
+    def run_load_and_stream(self, node, keyspace_name: str = 'keyspace1', table_name: str = 'standard1'):
+        system_log_follower = node.follow_system_log(
+            patterns=[self.LOAD_AND_STREAM_DONE_EXPR.format(keyspace_name, table_name),
+                      self.LOAD_AND_STREAM_RUN_EXPR])
+        LOGGER.info("Running load and stream on the node %s for %s.%s'", node.name, keyspace_name, table_name)
+
+        # `load_and_stream` parameter is not supported by nodetool yet. This is workaround
+        # https://github.com/scylladb/scylla-tools-java/issues/253
+        load_api_cmd = 'curl -X POST --header "Content-Type: application/json" --header ' \
+                       f'"Accept: application/json" "http://127.0.0.1:10000/storage_service/sstables/{keyspace_name}?' \
+                       f'cf={table_name}&load_and_stream=true"'
+        node.remoter.run(load_api_cmd)
+        return system_log_follower
+
+    @staticmethod
+    def run_refresh(node, test_data: namedtuple) -> List[str]:
+        LOGGER.debug('Loading %s keys to %s by refresh', test_data.keys_num, node.name)
+        # Resharding of the loaded sstable files is performed before they are moved from upload to the main folder.
+        # So we need to validate that resharded files are placed in the "upload" folder before moving.
+        # Find the compaction output that reported about the resharding
+
+        system_log_follower = node.follow_system_log(patterns=[r'Resharded.*\[/'])
+        node.run_nodetool(sub_cmd="refresh", args="-- keyspace1 standard1")
+        return system_log_follower
+
+    @staticmethod
+    @timeout_decor(
+        timeout=60,
+        allowed_exceptions=(AssertionError,),
+        message="Waiting for resharding completion message to appear in logs")
+    def validate_resharding_after_refresh(system_log_follower, node):
+        """
+        # Validate that files after resharding were saved in the "upload" folder.
+        # Example of compaction output:
+
+        #   scylla[6653]:  [shard 0] compaction - [Reshard keyspace1.standard1 3cad4140-f8c3-11ea-acb1-000000000002]
+        #   Resharded 1 sstables to [
+        #   /var/lib/scylla/data/keyspace1/standard1-9fbed8d0f8c211ea9bb1000000000000/upload/md-9-big-Data.db:level=0,
+        #   /var/lib/scylla/data/keyspace1/standard1-9fbed8d0f8c211ea9bb1000000000000/upload/md-10-big-Data.db:level=0,
+        #   /var/lib/scylla/data/keyspace1/standard1-9fbed8d0f8c211ea9bb1000000000000/upload/md-11-big-Data.db:level=0,
+        #   /var/lib/scylla/data/keyspace1/standard1-9fbed8d0f8c211ea9bb1000000000000/upload/md-12-big-Data.db:level=0,
+        #   /var/lib/scylla/data/keyspace1/standard1-9fbed8d0f8c211ea9bb1000000000000/upload/md-13-big-Data.db:level=0,
+        #   /var/lib/scylla/data/keyspace1/standard1-9fbed8d0f8c211ea9bb1000000000000/upload/md-22-big-Data.db:level=0,
+        #   /var/lib/scylla/data/keyspace1/standard1-9fbed8d0f8c211ea9bb1000000000000/upload/md-15-big-Data.db:level=0,
+        #   /var/lib/scylla/data/keyspace1/standard1-9fbed8d0f8c211ea9bb1000000000000/upload/md-16-big-Data.db:level=0,
+        #   ]. 91MB to 92MB (~100% of original) in 5009ms = 18MB/s. ~370176 total partitions merged to 370150
+        """
+        resharding_logs = list(system_log_follower)
+        assert resharding_logs, f"Resharding wasn't run on the node {node.name}"
+        LOGGER.debug("Found resharding on the node %s: %s", node.name, resharding_logs)
+
+        for line in resharding_logs:
+            # Find all files that were created after resharding
+            for one_file in re.findall(r"(/var/.*?),", line, re.IGNORECASE):
+                # The file path have to include "upload" folder
+                assert '/upload/' in one_file, \
+                    f"Loaded file was resharded not in 'upload' folder on the node {node.name}"
+
+    @timeout_decor(
+        timeout=60,
+        allowed_exceptions=(AssertionError,),
+        message="Waiting for load_and_stream completion message to appear in logs")
+    def validate_load_and_stream_status(self, node, system_log_follower,
+                                        keyspace_name='keyspace1', table_name='standard1'):
+        """
+        Validate that load_and_stream was started and has been completed successfully.
+        Search for a messages like:
+            storage_service - load_and_stream: ops_uuid=c06c76bb-d178-4e9c-87ff-90df7b80bd5e, ks=keyspace1, table=standard1,
+            target_node=10.0.3.31, num_partitions_sent=45721, num_bytes_sent=24140688
+
+           storage_service - Done loading new SSTables for keyspace=keyspace1, table=standard1, load_and_stream=true,
+           primary_replica_only=false, status=succeeded
+        """
+        load_and_stream_messages = list(system_log_follower)
+        assert load_and_stream_messages, f"Load and stream wasn't run on the node {node.name}"
+        LOGGER.debug("Found load_and_stream messages: %s", load_and_stream_messages)
+
+        load_and_stream_started = False
+        load_and_stream_status = ""
+        for line in load_and_stream_messages:
+            if not load_and_stream_started and re.findall(self.LOAD_AND_STREAM_RUN_EXPR, line):
+                load_and_stream_started = True
+
+            load_and_stream_done = re.search(self.LOAD_AND_STREAM_DONE_EXPR.format(keyspace_name, table_name), line)
+            if load_and_stream_done:
+                load_and_stream_status = load_and_stream_done.groups()[0]
+                break
+
+        assert load_and_stream_started, f'Load and stream has not been run on the node {node.name}'
+        assert load_and_stream_status == 'succeeded', \
+            f'Load and stream status  on the node {node.name} is "{load_and_stream_status}". Expected "succeeded"'
