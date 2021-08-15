@@ -47,9 +47,10 @@ class TestOperatorEvents(unittest.TestCase):
         assert event.timestamp == 1624895582.269804
         self.assertEqual(
             '(ScyllaOperatorLogEvent Severity.WARNING) period_type=one-time '
-            'event_id=9bb2980a-5940-49a7-8b08-d5c323b46aa9: '
-            'type=TLS_HANDSHAKE_ERROR regex=TLS handshake error from .*:'
-            ' operator/operator.go:133] http: TLS handshake error from 172.17.0.1:50882: EOF',
+            'event_id=9bb2980a-5940-49a7-8b08-d5c323b46aa9: type=TLS_HANDSHAKE_ERROR regex=TLS handshake error '
+            'from .* line_number=0 node=N/A\n'
+            'I0628 15:53:02.269804       1 operator/operator.go:133] http: TLS handshake error from 172.17.0.1:50882: '
+            'EOF',
             str(event),
         )
 
@@ -69,8 +70,32 @@ class TestOperatorEvents(unittest.TestCase):
         assert event.timestamp == 1624896463.572294
         self.assertEqual(
             '(ScyllaOperatorLogEvent Severity.NORMAL) period_type=one-time '
-            'event_id=9bb2980a-5940-49a7-8b08-d5c323b46aa9: type=OPERATOR_STARTED_INFO '
-            'regex="Starting controller" controller="ScyllaCluster": scyllacluster/controller.go:203] '
-            '"Starting controller" controller="ScyllaCluster"',
+            'event_id=9bb2980a-5940-49a7-8b08-d5c323b46aa9: type=OPERATOR_STARTED_INFO regex="Starting controller" '
+            'controller="ScyllaCluster" line_number=0 node=N/A\n'
+            'I0628 16:07:43.572294       1 scyllacluster/controller.go:203] "Starting controller" '
+            'controller="ScyllaCluster"',
+            str(event),
+        )
+
+    def test_scylla_operator_log_event_wrong_scheduled_info(self):
+        log_record = (
+            "I0830 12:35:39              Not allowed pods are scheduled on Scylla node found: kube-proxy-7kjnf "
+            "(ip-10-0-1-200.eu-north-1.compute.internal node)"
+        )
+        event = ScyllaOperatorLogEvent.WRONG_SCHEDULED_PODS()
+        pattern = re.compile(event.regex, re.IGNORECASE)
+
+        self.assertTrue(isinstance(event, LogEvent))
+        self.assertTrue(pattern.search(log_record))
+        event.add_info(node="N/A", line=log_record, line_number=0)
+
+        self.assertEqual(event, pickle.loads(pickle.dumps(event)))
+        event.event_id = "9bb2980a-5940-49a7-8b08-d5c323b46aa9"
+        self.assertEqual(
+            '(ScyllaOperatorLogEvent Severity.WARNING) period_type=one-time '
+            'event_id=9bb2980a-5940-49a7-8b08-d5c323b46aa9: type=WRONG_SCHEDULED_PODS r'
+            'egex=Not allowed pods are scheduled on Scylla node found line_number=0 node=N/A\n'
+            'I0830 12:35:39              Not allowed pods are scheduled on Scylla node found: kube-proxy-7kjnf '
+            '(ip-10-0-1-200.eu-north-1.compute.internal node)',
             str(event),
         )

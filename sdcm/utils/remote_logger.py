@@ -23,6 +23,7 @@ from multiprocessing import Process, Event
 from sdcm import wait
 from sdcm.remote import RemoteCmdRunnerBase
 from sdcm.sct_events.decorators import raise_event_on_failure
+from sdcm.utils.k8s import KubernetesOps
 
 
 class LoggerBase(metaclass=ABCMeta):
@@ -297,6 +298,38 @@ class ScyllaOperatorLogger(CommandClusterLoggerBase):
             "-l app.kubernetes.io/instance=scylla-operator",
             namespace=self._cluster._scylla_operator_namespace)  # pylint: disable=protected-access
         return f"{cmd} >> {self._target_log_file} 2>&1"
+
+
+class WrongSchedulingLogger(CommandClusterLoggerBase):
+    restart_delay = 30
+
+    @property
+    def _logger_cmd(self) -> str:
+        if not self._cluster.allowed_labels_on_scylla_node:
+            return ''
+
+        wrong_scheduled_pods_on_scylla_node = []
+        scylla_pool = self._cluster.pools[self._cluster.SCYLLA_POOL_NAME]
+
+        nodes = scylla_pool.nodes
+
+        for node in nodes.items:
+            node_pods = KubernetesOps.list_pods(self._cluster, field_selector=f"spec.nodeName={node.metadata.name}")
+
+            for pod in node_pods:
+                pod_allowed = False
+                for key, value in self._cluster.allowed_labels_on_scylla_node:
+                    if (key, value) in pod.metadata.labels.items():
+                        pod_allowed = True
+                if not pod_allowed:
+                    wrong_scheduled_pods_on_scylla_node.append(f"{pod.metadata.name} ({node.metadata.name} node)")
+
+        if wrong_scheduled_pods_on_scylla_node:
+            joined_info = ', '.join(wrong_scheduled_pods_on_scylla_node)
+            message = f"Not allowed pods are scheduled on Scylla node found: {joined_info}"
+            return f"echo \"I`date -u +\"%m%d %H:%M:%S\"`              {message}\" >> {self._target_log_file} 2>&1"
+
+        return ''
 
 
 def get_system_logging_thread(logs_transport, node, target_log_file):  # pylint: disable=too-many-return-statements

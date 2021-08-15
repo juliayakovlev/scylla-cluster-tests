@@ -28,12 +28,14 @@ class ScyllaOperatorLogEvent(LogEvent):
     REAPPLY: Type[LogEventProtocol]
     TLS_HANDSHAKE_ERROR: Type[LogEventProtocol]
     OPERATOR_STARTED_INFO: Type[LogEventProtocol]
+    WRONG_SCHEDULED_PODS: Type[LogEventProtocol]
     message: str
     source: str
 
     def __init__(self, message: str = '', source: str = '', regex: str = None, severity=Severity.NORMAL):
         super().__init__(regex=regex, severity=severity)
         self.message = message
+        self.line = None
         self.source = source
         self.line_number = None
 
@@ -58,11 +60,21 @@ class ScyllaOperatorLogEvent(LogEvent):
                 microsecond=int(milliseconds), tzinfo=datetime.timezone.utc).timestamp()
         except Exception:  # pylint: disable=broad-except
             self.timestamp = time.time()
+
+        self.node = str(node)
+        self.line = line
+        self.line_number = line_number
+
+        self._ready_to_publish = True
+
         return self
 
     @property
     def msgfmt(self):
-        return super().msgfmt + ": {0.source} {0.message}"
+        message = super().msgfmt
+        if not self.line:
+            message = message + ": {0.source} {0.message}"
+        return message
 
 
 ScyllaOperatorLogEvent.add_subevent_type(
@@ -74,12 +86,16 @@ ScyllaOperatorLogEvent.add_subevent_type(
 ScyllaOperatorLogEvent.add_subevent_type(
     "OPERATOR_STARTED_INFO", severity=Severity.NORMAL,
     regex='"Starting controller" controller="ScyllaCluster"')
+ScyllaOperatorLogEvent.add_subevent_type(
+    "WRONG_SCHEDULED_PODS", severity=Severity.WARNING,
+    regex="Not allowed pods are scheduled on Scylla node found")
 
 
 SCYLLA_OPERATOR_EVENTS = [
     ScyllaOperatorLogEvent.REAPPLY(),
     ScyllaOperatorLogEvent.TLS_HANDSHAKE_ERROR(),
     ScyllaOperatorLogEvent.OPERATOR_STARTED_INFO(),
+    ScyllaOperatorLogEvent.WRONG_SCHEDULED_PODS(),
 ]
 
 
