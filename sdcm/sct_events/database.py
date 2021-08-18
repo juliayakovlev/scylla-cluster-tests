@@ -299,6 +299,8 @@ def get_pattern_to_event_to_func_mapping(node: str) \
 
     def _end_event(event_type: Type[ScyllaDatabaseContinuousEvent], match: Match):
         shard = int(match.groupdict()["shard"]) if "shard" in match.groupdict().keys() else None
+        starts_at = match.groupdict()["starts_at"] if "starts_at" in match.groupdict().keys() else None
+        alert_name = match.groupdict()["alert_name"] if "alert_name" in match.groupdict().keys() else None
         event_filter = event_registry.get_registry_filter()
         event_filter \
             .filter_by_node(node=node) \
@@ -307,6 +309,12 @@ def get_pattern_to_event_to_func_mapping(node: str) \
 
         if shard is not None:
             event_filter.filter_by_shard(shard)
+
+        if alert_name is not None:
+            event_filter.filter_by_alert(alert_name)
+
+        if starts_at is not None:
+            event_filter.filter_by_alert(starts_at)
 
         begun_events = event_filter.get_filtered()
 
