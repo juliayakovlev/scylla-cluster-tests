@@ -23,10 +23,9 @@ from socketserver import ThreadingMixIn
 import requests
 import prometheus_client
 
-from sdcm.sct_events.base import ContinuousEventsRegistry, EventPeriod
+from sdcm.sct_events.base import EventPeriod, ContinuousEventsRegistry
 from sdcm.utils.decorators import retrying, log_run_info
 from sdcm.sct_events.monitors import PrometheusAlertManagerEvent
-
 
 START = 'start'
 STOP = 'stop'
@@ -174,7 +173,7 @@ class PrometheusAlertManagerListener(threading.Thread):
     def _publish_end_of_alerts(self, alerts: dict):
         all_alerts = self._get_alerts()
         updated_dict = {}
-        event_filter = self.event_registry.get_registry_filter(by_base="PrometheusAlertManagerEvent")
+        event_filter = self.event_registry.get_prometheus_alerts_registry_filter()
         if all_alerts:
             for alert in all_alerts:
                 fingerprint = alert.get('fingerprint', None)

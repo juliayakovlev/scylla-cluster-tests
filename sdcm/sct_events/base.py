@@ -39,6 +39,7 @@ from dateutil.relativedelta import relativedelta
 from sdcm import sct_abs_path
 from sdcm.sct_events import Severity, SctEventProtocol
 from sdcm.sct_events.events_processes import EventsProcessesRegistry
+from sdcm.sct_events.monitors import PrometheusRegistryFilter
 from sdcm.utils.metaclasses import Singleton
 
 DEFAULT_SEVERITIES = sct_abs_path("defaults/severities.yaml")
@@ -47,16 +48,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ContinuousRegistryFilter:
-    def __init__(self, registry: List[Any], by_base: str = None):
-        """
-        str by_base: return events only with event.base value = by_base.
-                     For example: NodetoolEvent.base = "NodetoolEvent"
-        """
-        if not by_base:
-            self._registry = registry
-        else:
-            self._registry = [event for event in registry if event.base == by_base]
-        self._output = self._registry.copy()
+    def __init__(self, registry: List[Any]):
+        self._registry = registry
+        self._output = registry.copy()
 
     def filter_by_id(self, event_id: str) -> ContinuousRegistryFilter:
         self._output = [event for event in self._output if event.event_id == event_id]
@@ -80,16 +74,6 @@ class ContinuousRegistryFilter:
 
     def filter_by_shard(self, shard: int) -> ContinuousRegistryFilter:
         self._output = [item for item in self._output if item.shard == shard]
-
-        return self
-
-    def filter_by_alert(self, alert: str) -> ContinuousRegistryFilter:
-        self._output = [item for item in self._output if item.alert_name == alert]
-
-        return self
-
-    def filter_by_starts_at(self, starts_at: str) -> ContinuousRegistryFilter:
-        self._output = [item for item in self._output if item.starts_at == starts_at]
 
         return self
 
@@ -167,8 +151,13 @@ class ContinuousEventsRegistry(metaclass=Singleton):
 
         return found_events
 
-    def get_registry_filter(self, by_base=None) -> ContinuousRegistryFilter:
-        registry_filter = ContinuousRegistryFilter(registry=self.continuous_events, by_base=by_base)
+    def get_registry_filter(self) -> ContinuousRegistryFilter:
+        registry_filter = ContinuousRegistryFilter(registry=self.continuous_events)
+
+        return registry_filter
+
+    def get_prometheus_alerts_registry_filter(self) -> PrometheusRegistryFilter:
+        registry_filter = PrometheusRegistryFilter(registry=self.continuous_events)
 
         return registry_filter
 
@@ -713,4 +702,4 @@ __all__ = ("SctEvent", "SctEventProtocol", "SystemEvent", "BaseFilter",
            "BaseStressEvent", "StressEvent", "StressEventProtocol",
            "add_severity_limit_rules", "max_severity", "print_critical_events",
            "ContinuousEvent", "InformationalEvent", "ContinuousEventsRegistry",
-           "ContinuousEventRegistryException", "EventPeriod")
+           "ContinuousEventRegistryException", "EventPeriod", "ContinuousRegistryFilter")
