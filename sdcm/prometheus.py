@@ -23,9 +23,10 @@ from socketserver import ThreadingMixIn
 import requests
 import prometheus_client
 
-from sdcm.sct_events.base import EventPeriod, ContinuousEventsRegistry
-from sdcm.utils.decorators import retrying, log_run_info
+from sdcm.sct_events.base import EventPeriod
+from sdcm.sct_events.continuous_event import ContinuousEventsRegistry
 from sdcm.sct_events.monitors import PrometheusAlertManagerEvent
+from sdcm.utils.decorators import retrying, log_run_info
 
 START = 'start'
 STOP = 'stop'
@@ -173,7 +174,7 @@ class PrometheusAlertManagerListener(threading.Thread):
     def _publish_end_of_alerts(self, alerts: dict):
         all_alerts = self._get_alerts()
         updated_dict = {}
-        event_filter = self.event_registry.get_prometheus_alerts_registry_filter()
+        event_filter = self.event_registry.get_registry_filter()
         if all_alerts:
             for alert in all_alerts:
                 fingerprint = alert.get('fingerprint', None)
@@ -188,11 +189,10 @@ class PrometheusAlertManagerListener(threading.Thread):
             alert_name = labels.get("alertname", "")
             node = labels.get("instance", "N/A")
 
-            event_filter \
-                .filter_by_node(node=node) \
-                .filter_by_starts_at(starts_at=alert.get("startsAt")) \
-                .filter_by_alert(alert=alert_name) \
-                .filter_by_period(period_type=EventPeriod.BEGIN.value)
+            event_filter.filter_by_attr(base="PrometheusAlertManagerEvent",
+                                        node=node, starts_at=alert.get("startsAt"),
+                                        alert_name=alert_name, period_type=EventPeriod.BEGIN.value)
+
             begun_events = event_filter.get_filtered()
             if not begun_events:
                 new_event = PrometheusAlertManagerEvent(raw_alert=alert)

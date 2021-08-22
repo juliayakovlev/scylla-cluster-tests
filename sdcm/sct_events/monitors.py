@@ -13,29 +13,7 @@
 from typing import List, Any
 
 from sdcm.sct_events import Severity
-from sdcm.sct_events.base import ContinuousEvent, ContinuousRegistryFilter
-
-
-class PrometheusRegistryFilter(ContinuousRegistryFilter):
-
-    def __init__(self, registry: List[Any]):
-        """
-        str by_base: return events only with event.base value = by_base.
-                     For example: NodetoolEvent.base = "NodetoolEvent"
-        """
-        super().__init__(registry)
-        self._registry = [event for event in registry if event.base == "PrometheusAlertManagerEvent"]
-        self._output = self._registry.copy()
-
-    def filter_by_alert(self, alert: str) -> ContinuousRegistryFilter:
-        self._output = [item for item in self._output if item.alert_name == alert]
-
-        return self
-
-    def filter_by_starts_at(self, starts_at: str) -> ContinuousRegistryFilter:
-        self._output = [item for item in self._output if item.starts_at == starts_at]
-
-        return self
+from sdcm.sct_events.continuous_event import ContinuousEvent
 
 
 class PrometheusAlertManagerEvent(ContinuousEvent):  # pylint: disable=too-many-instance-attributes
