@@ -21,6 +21,8 @@ nemesis_interval: 5
 
 user_prefix: 'longevity-tls-50gb-3d'
 
+append_scylla_args: '--logger-log-level commitlog=debug'
+
 space_node_threshold: 644245094
 
 server_encrypt: true
