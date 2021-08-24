@@ -36,7 +36,6 @@ from elasticsearch.exceptions import ConnectionTimeout as ElasticSearchConnectio
 from invoke import UnexpectedExit
 from cassandra import ConsistencyLevel
 
-from data_dir.test_data_library.load_inventory import get_load_test_data_inventory
 from sdcm.paths import SCYLLA_YAML_PATH
 from sdcm.cluster import NodeSetupTimeout, NodeSetupFailed, ClusterNodesNotReady
 from sdcm.cluster import NodeStayInClusterAfterDecommission
@@ -47,7 +46,6 @@ from sdcm.utils.common import (get_db_tables, generate_random_string,
                                update_certificates, reach_enospc_on_node, clean_enospc_on_node,
                                parse_nodetool_listsnapshots,
                                update_authenticator)
-from sdcm.utils.common import LoadUtils
 from sdcm.utils import cdc
 from sdcm.utils.decorators import retrying, latency_calculator_decorator
 from sdcm.utils.decorators import timeout as timeout_decor
@@ -65,6 +63,7 @@ from sdcm.sct_events.decorators import raise_event_on_failure
 from sdcm.sct_events.group_common_events import (ignore_alternator_client_errors, ignore_no_space_errors,
                                                  ignore_scrub_invalid_errors)
 from sdcm.db_stats import PrometheusDBStats
+from sdcm.utils.sstable.load_utils import SstableLoadUtils
 from sdcm.utils.toppartition_util import NewApiTopPartitionCmd, OldApiTopPartitionCmd
 from sdcm.remote.libssh2_client.exceptions import UnexpectedExit as Libssh2UnexpectedExit
 from sdcm.cluster_k8s import PodCluster, ScyllaPodCluster
@@ -947,39 +946,39 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         # Checking the columns number of keyspace1.standard1
         self.log.debug('Prepare keyspace1.standard1 if it does not exist')
         self._prepare_test_table(ks='keyspace1', table='standard1')
-        column_num = LoadUtils.calculate_columns_count_in_table(self.target_node)
+        column_num = SstableLoadUtils.calculate_columns_count_in_table(self.target_node)
 
         # Note: when issue #6617 is fixed, we can try to load snapshot (cols=5) to a table (1 < cols < 5),
         #       expect that refresh will fail (no serious db error).
-        if 1 < column_num < 5:
+        if column_num < 5:
             raise UnsupportedNemesis("Schema doesn't match the snapshot, not uploading")
 
-        test_data = get_load_test_data_inventory(column_num, big_sstable=False, load_and_stream=True)
+        test_data = SstableLoadUtils.get_load_test_data_inventory(column_num, big_sstable=False, load_and_stream=True)
 
         result = self.target_node.run_nodetool(sub_cmd="cfstats", args="keyspace1.standard1")
 
-        helpers = LoadUtils()
         if result is not None and result.exit_status == 0:
-            map_files_to_node = helpers.distribute_test_files_to_cluster_nodes(nodes=self.cluster.nodes,
-                                                                               test_data=test_data)
+            map_files_to_node = SstableLoadUtils.distribute_test_files_to_cluster_nodes(nodes=self.cluster.nodes,
+                                                                                        test_data=test_data)
             for sstables_info, load_on_node in map_files_to_node:
-                helpers.upload_sstables(load_on_node, test_data=sstables_info)
-                system_log_follower = helpers.run_load_and_stream(load_on_node)
-                helpers.validate_load_and_stream_status(load_on_node, system_log_follower)
+                SstableLoadUtils.upload_sstables(load_on_node, test_data=sstables_info)
+                system_log_follower = SstableLoadUtils.run_load_and_stream(load_on_node)
+                SstableLoadUtils.validate_load_and_stream_status(load_on_node, system_log_follower)
 
     # pylint: disable=too-many-statements
     def disrupt_nodetool_refresh(self, big_sstable: bool = False):
         # Checking the columns number of keyspace1.standard1
         self.log.debug('Prepare keyspace1.standard1 if it does not exist')
         self._prepare_test_table(ks='keyspace1', table='standard1')
-        column_num = LoadUtils.calculate_columns_count_in_table(self.target_node)
+        column_num = SstableLoadUtils.calculate_columns_count_in_table(self.target_node)
 
         # Note: when issue #6617 is fixed, we can try to load snapshot (cols=5) to a table (1 < cols < 5),
         #       expect that refresh will fail (no serious db error).
         if 1 < column_num < 5:
             raise UnsupportedNemesis("Schema doesn't match the snapshot, not uploading")
 
-        test_data = get_load_test_data_inventory(column_num, big_sstable=big_sstable, load_and_stream=False)
+        test_data = SstableLoadUtils.get_load_test_data_inventory(column_num, big_sstable=big_sstable,
+                                                                  load_and_stream=False)
 
         result = self.target_node.run_nodetool(sub_cmd="cfstats", args="keyspace1.standard1")
 
@@ -997,9 +996,9 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
 
             # Executing rolling refresh one by one
             for node in self.cluster.nodes:
-                LoadUtils.upload_sstables(node, test_data=test_data)
-                system_log_follower = LoadUtils.run_refresh(node, test_data=test_data)
-                LoadUtils.validate_resharding_after_refresh(system_log_follower, node)
+                SstableLoadUtils.upload_sstables(node, test_data=test_data[0])
+                system_log_follower = SstableLoadUtils.run_refresh(node, test_data=test_data[0])
+                SstableLoadUtils.validate_resharding_after_refresh(system_log_follower, node)
 
             # Verify that the special key is loaded by SELECT query
             result = self.target_node.run_cqlsh(query_verify)
@@ -3142,7 +3141,7 @@ class DeleteByRowsRangeMonkey(Nemesis):
 class ChaosMonkey(Nemesis):
 
     def disrupt(self):
-        self.call_random_disrupt_method()
+        self.call_random_disrupt_method(['disrupt_nodetool_refresh', 'disrupt_load_and_stream'])
 
 
 class CategoricalMonkey(Nemesis):
