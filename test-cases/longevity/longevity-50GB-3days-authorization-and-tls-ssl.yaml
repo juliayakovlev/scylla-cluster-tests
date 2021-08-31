@@ -16,6 +16,7 @@ instance_type_db: 'i3.4xlarge'
 # Seems the c5.xlarge type is small for this load - I receive OOM on 2 loaders
 instance_type_loader: 'c5.2xlarge'
 
+append_scylla_args: ' --enable-keyspace-column-family-metrics 1'
 nemesis_class_name: 'ChaosMonkey'
 nemesis_interval: 5
 
