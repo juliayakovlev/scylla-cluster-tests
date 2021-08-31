@@ -18,6 +18,7 @@ import time
 from typing import List, Tuple, Type
 
 from sdcm.sct_events import Severity
+from sdcm.utils.remote_logger import KubernetesWrongSchedulingLogger
 from sdcm.sct_events.base import LogEvent, LogEventProtocol, T_log_event
 
 
@@ -88,7 +89,7 @@ ScyllaOperatorLogEvent.add_subevent_type(
     regex='"Starting controller" controller="ScyllaCluster"')
 ScyllaOperatorLogEvent.add_subevent_type(
     "WRONG_SCHEDULED_PODS", severity=Severity.WARNING,
-    regex="Not allowed pods are scheduled on Scylla node found")
+    regex=KubernetesWrongSchedulingLogger.WRONG_SCHEDULED_PODS_MESSAGE)
 
 
 SCYLLA_OPERATOR_EVENTS = [

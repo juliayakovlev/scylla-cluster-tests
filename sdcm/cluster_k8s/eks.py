@@ -243,8 +243,7 @@ class EksCluster(KubernetesCluster, EksClusterCleanupMixin):
                                               ('k8s-app', 'aws-node'),
                                               ('app', 'local-volume-provisioner'),
                                               ('k8s-app', 'kube-proxy'),
-                                              ('app.kubernetes.io/name', 'webhook-server'),
-                                              ('scylla/cluster', 'sct-cluster')]
+                                              ('scylla/cluster', self.k8s_scylla_cluster_name)]
 
     def create_eks_cluster(self, wait_till_functional=True):
         self.eks_client.create_cluster(

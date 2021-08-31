@@ -48,7 +48,7 @@ class TestOperatorEvents(unittest.TestCase):
         self.assertEqual(
             '(ScyllaOperatorLogEvent Severity.WARNING) period_type=one-time '
             'event_id=9bb2980a-5940-49a7-8b08-d5c323b46aa9: type=TLS_HANDSHAKE_ERROR regex=TLS handshake error '
-            'from .* line_number=0 node=N/A\n'
+            'from .* node=N/A\n'
             'I0628 15:53:02.269804       1 operator/operator.go:133] http: TLS handshake error from 172.17.0.1:50882: '
             'EOF',
             str(event),
@@ -71,7 +71,7 @@ class TestOperatorEvents(unittest.TestCase):
         self.assertEqual(
             '(ScyllaOperatorLogEvent Severity.NORMAL) period_type=one-time '
             'event_id=9bb2980a-5940-49a7-8b08-d5c323b46aa9: type=OPERATOR_STARTED_INFO regex="Starting controller" '
-            'controller="ScyllaCluster" line_number=0 node=N/A\n'
+            'controller="ScyllaCluster" node=N/A\n'
             'I0628 16:07:43.572294       1 scyllacluster/controller.go:203] "Starting controller" '
             'controller="ScyllaCluster"',
             str(event),
@@ -93,8 +93,8 @@ class TestOperatorEvents(unittest.TestCase):
         event.event_id = "9bb2980a-5940-49a7-8b08-d5c323b46aa9"
         self.assertEqual(
             '(ScyllaOperatorLogEvent Severity.WARNING) period_type=one-time '
-            'event_id=9bb2980a-5940-49a7-8b08-d5c323b46aa9: type=WRONG_SCHEDULED_PODS r'
-            'egex=Not allowed pods are scheduled on Scylla node found line_number=0 node=N/A\n'
+            'event_id=9bb2980a-5940-49a7-8b08-d5c323b46aa9: type=WRONG_SCHEDULED_PODS '
+            'regex=Not allowed pods are scheduled on Scylla node found node=N/A\n'
             'I0830 12:35:39              Not allowed pods are scheduled on Scylla node found: kube-proxy-7kjnf '
             '(ip-10-0-1-200.eu-north-1.compute.internal node)',
             str(event),

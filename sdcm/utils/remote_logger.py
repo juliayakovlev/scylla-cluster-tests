@@ -300,8 +300,10 @@ class ScyllaOperatorLogger(CommandClusterLoggerBase):
         return f"{cmd} >> {self._target_log_file} 2>&1"
 
 
-class WrongSchedulingLogger(CommandClusterLoggerBase):
-    restart_delay = 30
+class KubernetesWrongSchedulingLogger(CommandClusterLoggerBase):
+    LOGGER = logging.getLogger(__name__)
+    restart_delay = 120
+    WRONG_SCHEDULED_PODS_MESSAGE = "Not allowed pods are scheduled on Scylla node found"
 
     @property
     def _logger_cmd(self) -> str:
@@ -309,24 +311,24 @@ class WrongSchedulingLogger(CommandClusterLoggerBase):
             return ''
 
         wrong_scheduled_pods_on_scylla_node = []
-        scylla_pool = self._cluster.pools[self._cluster.SCYLLA_POOL_NAME]
 
-        nodes = scylla_pool.nodes
+        node_names = [node.metadata.name for node in self._cluster.pools[self._cluster.SCYLLA_POOL_NAME].nodes.items]
 
-        for node in nodes.items:
-            node_pods = KubernetesOps.list_pods(self._cluster, field_selector=f"spec.nodeName={node.metadata.name}")
-
-            for pod in node_pods:
+        try:
+            for pod in KubernetesOps.list_pods(self._cluster,
+                                               field_selector=f"spec.nodeName in ({', '.join(node_names)})"):
                 pod_allowed = False
                 for key, value in self._cluster.allowed_labels_on_scylla_node:
                     if (key, value) in pod.metadata.labels.items():
                         pod_allowed = True
                 if not pod_allowed:
-                    wrong_scheduled_pods_on_scylla_node.append(f"{pod.metadata.name} ({node.metadata.name} node)")
+                    wrong_scheduled_pods_on_scylla_node.append(f"{pod.metadata.name} ({pod.nodeName} node)")
+        except Exception as details:
+            self.LOGGER.debug("Failed to get pods list: %s", str(details))
 
         if wrong_scheduled_pods_on_scylla_node:
             joined_info = ', '.join(wrong_scheduled_pods_on_scylla_node)
-            message = f"Not allowed pods are scheduled on Scylla node found: {joined_info}"
+            message = f"{self.WRONG_SCHEDULED_PODS_MESSAGE}: {joined_info}"
             return f"echo \"I`date -u +\"%m%d %H:%M:%S\"`              {message}\" >> {self._target_log_file} 2>&1"
 
         return ''
