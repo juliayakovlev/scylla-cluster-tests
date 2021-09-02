@@ -15,9 +15,10 @@ n_monitor_nodes: 1
 instance_type_db: 'i3.4xlarge'
 # Seems the c5.xlarge type is small for this load - I receive OOM on 2 loaders
 instance_type_loader: 'c5.2xlarge'
+instance_type_monitor: 'c5.4xlarge'
 
-append_scylla_args: ' --enable-keyspace-column-family-metrics 1'
-nemesis_class_name: 'ChaosMonkey'
+append_scylla_args: '--blocked-reactor-notify-ms 100 --abort-on-lsa-bad-alloc 1 --abort-on-seastar-bad-alloc --abort-on-internal-error 1 --abort-on-ebadf 1 --enable-sstable-key-validation 1 --enable-keyspace-column-family-metrics 1'
+nemesis_class_name: 'RebuildStreamingErrMonkey'
 nemesis_interval: 5
 
 user_prefix: 'longevity-tls-50gb-3d'
