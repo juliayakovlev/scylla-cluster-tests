@@ -1,7 +1,9 @@
 test_duration: 550
-prepare_write_cmd: "cassandra-stress write cl=ALL n=200200300  -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -port jmx=6868 -mode cql3 native -rate threads=1000 -col 'size=FIXED(200) n=FIXED(5)' -pop seq=1..200200300 -log interval=15"
+prepare_write_cmd: ["cassandra-stress write cl=ALL n=200200300  -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -port jmx=6868 -mode cql3 native -rate threads=1000 -col 'size=FIXED(200) n=FIXED(5)' -pop seq=1..200200300 -log interval=15",
+                    "cassandra-stress user profile=/tmp/cs_logged_batch_on_few_partitions.yaml n=5000000 ops'(insert=1)' cl=QUORUM -mode native cql3 -rate threads=50"]
 
-stress_cmd: ["cassandra-stress write cl=QUORUM duration=360m  -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -port jmx=6868 -mode cql3 native -rate threads=50  -col 'size=FIXED(200) n=FIXED(5)' -pop seq=400200300..600200300 -log interval=15"]
+stress_cmd: ["cassandra-stress write cl=QUORUM duration=360m  -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -port jmx=6868 -mode cql3 native -rate threads=50  -col 'size=FIXED(200) n=FIXED(5)' -pop seq=400200300..600200300 -log interval=15",
+             "cassandra-stress user profile=/tmp/cs_logged_batch_on_few_partitions.yaml ops'(insert=1)' cl=QUORUM duration=360m -mode native cql3 -rate threads=50"]
 stress_read_cmd: ["cassandra-stress read cl=ONE duration=360m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -port jmx=6868 -mode cql3 native -rate threads=50  -col 'size=FIXED(200) n=FIXED(5)' -pop seq=1..200200300 -log interval=5"]
 run_fullscan: 'keyspace1.standard1, 5' # 'ks.cf|random, interval(min)''
 
@@ -11,11 +13,13 @@ n_monitor_nodes: 1
 
 instance_type_db: 'i3.4xlarge'
 
-nemesis_class_name: 'LimitedChaosMonkey'
+nemesis_class_name: 'StopStartMonkey'
 nemesis_interval: 5
 nemesis_during_prepare: false
 
 user_prefix: 'longevity-encrypt-at-rest-200gb-6h-tls'
+
+#reuse_cluster: '2c0b3c96-8b34-4621-9fe1-72cf2f0e6c65'
 
 space_node_threshold: 644245094
 
@@ -26,12 +30,14 @@ authenticator_password: cassandra
 authorizer: 'CassandraAuthorizer'
 
 pre_create_schema: True
-scylla_encryption_options: "{ 'cipher_algorithm' : 'AES/ECB/PKCS5Padding', 'secret_key_strength' : 128, 'key_provider': 'LocalFileSystemKeyProviderFactory', 'secret_key_file': '/etc/scylla/encrypt_conf/secret_key'}"
+scylla_encryption_options: "{ 'cipher_algorithm' : 'AES', 'secret_key_strength' : 128, 'key_provider': 'LocalFileSystemKeyProviderFactory', 'secret_key_file': '/etc/scylla/encrypt_conf/secret_key'}"
 
 # enable system_info_encryption, config kmip_hosts
 append_scylla_yaml: |
   system_key_directory: /etc/encrypt_conf/
   system_info_encryption:
       enabled: True  # system_info_encryption
+      cipher_algorithm: AES
+      secret_key_strength: 128
       key_provider: LocalFileSystemKeyProviderFactory  # system_info_encryption
       secret_key_file: '/etc/scylla/encrypt_conf/system_info_encryption_keyfile'

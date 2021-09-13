@@ -122,7 +122,8 @@ class CassandraStressThread:  # pylint: disable=too-many-instance-attributes
                           3]  # make sure each loader is targeting on datacenter/region
             first_node = first_node[0] if first_node else self.node_list[0]
             stress_cmd += " -node {}".format(first_node.ip_address)
-        if 'skip-unsupported-columns' in self._get_available_suboptions(node, '-errors'):
+        if 'user profile=' not in stress_cmd and \
+                'skip-unsupported-columns' in self._get_available_suboptions(node, '-errors'):
             stress_cmd = self._add_errors_option(stress_cmd, ['skip-unsupported-columns'])
         return stress_cmd
 

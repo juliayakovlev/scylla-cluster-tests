@@ -1,0 +1,45 @@
+# Keyspace Name
+keyspace: feature_store
+
+# The CQL for creating a keyspace (optional if it already exists)
+keyspace_definition: |
+  CREATE KEYSPACE feature_store WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '3'};
+
+# Table name
+table: query_rewrite
+
+# The CQL for creating a table you wish to stress (optional if it already exists)
+table_definition: |
+  CREATE TABLE query_rewrite (
+      term text,
+      warehouse_id int,
+      expansion_engine text,
+      expansion_term text,
+      score double,
+      PRIMARY KEY (term, warehouse_id, expansion_engine, expansion_term)
+    )
+
+
+### Column Distribution Specifications ###
+
+columnspec:
+  - name: term
+    size: fixed(32)
+  - name: expansion_engine
+    size: fixed(38)
+  - name: expansion_term
+    size: fixed(38)
+  - name: warehouse_id
+    cluster: fixed(20)
+
+### Batch Ratio Distribution Specifications ###
+
+insert: # SchemaInsert.java, does batched prepared statements insert
+  partitions: fixed(10) # 10 partitions in every batch
+  select:    fixed(100)/100
+  batchtype: LOGGED
+
+queries:
+  get-one:
+    cql: select * from query_rewrite where term = ? and warehouse_id = ? and expansion_engine = ? and expansion_term = ?
+    fields: samerow
