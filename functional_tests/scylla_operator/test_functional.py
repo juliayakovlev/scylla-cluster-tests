@@ -503,3 +503,72 @@ def test_deploy_helm_with_default_values(db_cluster: ScyllaPodCluster):
     finally:
         db_cluster.k8s_cluster.helm(f"uninstall {target_chart_name} --timeout 120s", namespace=namespace)
         db_cluster.k8s_cluster.kubectl(f"delete namespace {namespace}")
+
+
+def test_scylla_yaml_override(db_cluster, scylla_yaml):
+    """
+    Test of applying scylla.yaml via configmap
+    - update parameter that exists in scylla.yaml
+    - add parameter
+    """
+
+    with scylla_yaml() as props:
+        configmap_scylla_yaml_content = props
+
+    original_hinted_handoff_throttle_in_kb, new_hinted_handoff_throttle_in_kb = None, None
+
+    with db_cluster.nodes[0].actual_scylla_yaml() as props:
+        original_hinted_handoff = dict(props).get("hinted_handoff_enabled")
+        if not configmap_scylla_yaml_content.get("hinted_handoff_throttle_in_kb"):
+            original_hinted_handoff_throttle_in_kb = dict(props).get("hinted_handoff_throttle_in_kb")
+
+    log.info("configMap's acylla.yaml = %s", configmap_scylla_yaml_content)
+
+    assert isinstance(original_hinted_handoff, bool), (
+        f"configMap scylla.yaml have unexpected 'hinted_handoff_enabled' value: {original_hinted_handoff}")
+    new_hinted_handoff = not original_hinted_handoff
+
+    if original_hinted_handoff_throttle_in_kb:
+        assert isinstance(original_hinted_handoff_throttle_in_kb, int), (
+            f"Node scylla.yaml have unexpected 'hinted_handoff_throttle_in_kb' value: "
+            f"{original_hinted_handoff_throttle_in_kb}")
+        new_hinted_handoff_throttle_in_kb = original_hinted_handoff_throttle_in_kb * 2
+
+    with scylla_yaml() as props:
+        props['hinted_handoff_enabled'] = new_hinted_handoff
+        if new_hinted_handoff_throttle_in_kb:
+            props['hinted_handoff_throttle_in_kb'] = new_hinted_handoff_throttle_in_kb
+
+    db_cluster.restart_scylla()
+    for node in db_cluster.nodes:
+        with node.actual_scylla_yaml() as props:
+            assert dict(props).get('hinted_handoff_enabled') == new_hinted_handoff
+            if new_hinted_handoff_throttle_in_kb:
+                assert dict(props).get('hinted_handoff_throttle_in_kb') == new_hinted_handoff_throttle_in_kb
+
+    # NOTE: check nodes states from all the nodes, because it is possible to have it be inconsistent
+    for node in db_cluster.nodes:
+        db_cluster.wait_for_nodes_up_and_normal(nodes=db_cluster.nodes, verification_node=node)
+
+    with scylla_yaml() as props:
+        assert dict(props).get('hinted_handoff_enabled') == new_hinted_handoff
+        if 'hinted_handoff_enabled' not in configmap_scylla_yaml_content:
+            props.pop('hinted_handoff_enabled', None)
+        else:
+            props['hinted_handoff_enabled'] = configmap_scylla_yaml_content['hinted_handoff_enabled']
+
+        if new_hinted_handoff_throttle_in_kb:
+            props.pop('hinted_handoff_throttle_in_kb', None)
+
+    db_cluster.restart_scylla()
+
+    for node in db_cluster.nodes:
+        with node.actual_scylla_yaml() as props:
+            assert dict(props).get('hinted_handoff_enabled') == original_hinted_handoff
+            assert dict(props).get('hinted_handoff_throttle_in_kb') == original_hinted_handoff_throttle_in_kb
+
+    for node in db_cluster.nodes:
+        db_cluster.wait_for_nodes_up_and_normal(nodes=db_cluster.nodes, verification_node=node)
+
+    with scylla_yaml() as props:
+        assert configmap_scylla_yaml_content == props
