@@ -522,22 +522,25 @@ def test_scylla_yaml_override(db_cluster, scylla_yaml):
         if not configmap_scylla_yaml_content.get("hinted_handoff_throttle_in_kb"):
             original_hinted_handoff_throttle_in_kb = dict(props).get("hinted_handoff_throttle_in_kb")
 
-    log.info("configMap's acylla.yaml = %s", configmap_scylla_yaml_content)
+    log.info("configMap's scylla.yaml = %s", configmap_scylla_yaml_content)
 
     assert isinstance(original_hinted_handoff, bool), (
-        f"configMap scylla.yaml have unexpected 'hinted_handoff_enabled' value: {original_hinted_handoff}")
+        f"configMap scylla.yaml have unexpected 'hinted_handoff_enabled' type: {type(original_hinted_handoff)}. "
+        f"Expected 'bool'")
     new_hinted_handoff = not original_hinted_handoff
 
     if original_hinted_handoff_throttle_in_kb:
         assert isinstance(original_hinted_handoff_throttle_in_kb, int), (
-            f"Node scylla.yaml have unexpected 'hinted_handoff_throttle_in_kb' value: "
-            f"{original_hinted_handoff_throttle_in_kb}")
+            f"Node scylla.yaml have unexpected 'hinted_handoff_throttle_in_kb' type: "
+            f"{type(original_hinted_handoff_throttle_in_kb)}. Expected 'int'")
         new_hinted_handoff_throttle_in_kb = original_hinted_handoff_throttle_in_kb * 2
 
     with scylla_yaml() as props:
         props['hinted_handoff_enabled'] = new_hinted_handoff
         if new_hinted_handoff_throttle_in_kb:
             props['hinted_handoff_throttle_in_kb'] = new_hinted_handoff_throttle_in_kb
+        else:
+            dict(props).pop('hinted_handoff_throttle_in_kb')
 
     db_cluster.restart_scylla()
     for node in db_cluster.nodes:
@@ -545,6 +548,8 @@ def test_scylla_yaml_override(db_cluster, scylla_yaml):
             assert dict(props).get('hinted_handoff_enabled') == new_hinted_handoff
             if new_hinted_handoff_throttle_in_kb:
                 assert dict(props).get('hinted_handoff_throttle_in_kb') == new_hinted_handoff_throttle_in_kb
+            else:
+                assert not dict(props).get('hinted_handoff_throttle_in_kb')
 
     # NOTE: check nodes states from all the nodes, because it is possible to have it be inconsistent
     for node in db_cluster.nodes:
@@ -559,6 +564,8 @@ def test_scylla_yaml_override(db_cluster, scylla_yaml):
 
         if new_hinted_handoff_throttle_in_kb:
             props.pop('hinted_handoff_throttle_in_kb', None)
+        else:
+            props['hinted_handoff_throttle_in_kb'] = configmap_scylla_yaml_content['hinted_handoff_throttle_in_kb']
 
     db_cluster.restart_scylla()
 
