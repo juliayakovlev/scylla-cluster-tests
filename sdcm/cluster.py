@@ -1274,7 +1274,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             uuid_result = self.remoter.run('test -e %s' % uuid_path, ignore_status=True, verbose=True)
             uuid_exists = uuid_result.ok
             if uuid_exists:
-                result = self.remoter.run('cat %s' % uuid_path, verbose=True)
+                result = self.remoter.sudo('cat %s' % uuid_path, verbose=True)
                 self._uuid = result.stdout.strip()
         return self._uuid
 
