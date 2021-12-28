@@ -3808,6 +3808,7 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
             verification_node = random.choice(self.nodes)
         status = {}
         res = verification_node.run_nodetool('status', warning_event_on_exception=(Exception,), publish_event=False)
+        self.log.info("Status res: %s", res)
         data_centers = res.stdout.strip().split("Datacenter: ")
         for dc in data_centers:
             if dc:
@@ -3836,6 +3837,7 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
                         status[dc_name][ip] = node_info
                     except ValueError:
                         pass
+                    self.log.info("Parsed status of %s datacenter: %s", dc_name, status)
         return status
 
     @staticmethod
@@ -3900,6 +3902,7 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
         if not nodes:
             nodes = self.nodes
         status = self.get_nodetool_status(verification_node=verification_node)
+        self.log.info("Nodetool status parsed result: %s", status)
         up_statuses = []
         for node in nodes:
             found_node_status = False
@@ -3908,9 +3911,13 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
                 if ip_status:
                     found_node_status = True
                     up_statuses.append(ip_status["state"] == "UN")
+                    self.log.info("Node %s dc_status status %s: %s", node.ip_address, found_node_status,
+                                  ip_status["state"])
                     break
             if not found_node_status:
                 up_statuses.append(False)
+            self.log.info("Node %s status: %s", node.ip_address, found_node_status)
+        self.log.info("up_statuses: %s", up_statuses)
         if not all(up_statuses):
             raise ClusterNodesNotReady("Not all nodes joined the cluster")
 
