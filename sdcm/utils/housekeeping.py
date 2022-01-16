@@ -71,6 +71,7 @@ class HousekeepingDB:
 
     def get_most_recent_record(self, query: str, args: Optional[Sequence[Any]] = None) -> Optional[Row]:
         result = self.execute(query + " ORDER BY -dt LIMIT 1", args)
+        LOGGER.info("get_most_recent_record: %s", result)
         return result[0] if result else None
 
     def get_new_records(self, query: str, args: Optional[Sequence[Any]] = None, last_id: int = 0) -> Sequence[Row]:
