@@ -8,5 +8,6 @@ stress_read_cmd: ["cassandra-stress read cl=QUORUM duration=11h -port jmx=6868 -
 nemesis_class_name: 'NodeTerminateAndReplace'
 nemesis_interval: 5
 nemesis_during_prepare: false
+seeds_num: 3
 
 user_prefix: 'longevity-rbno-12h-replace-node'

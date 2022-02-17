@@ -1,5 +1,7 @@
+test_duration: 2940
 nemesis_class_name: 'DecommissionMonkey'
 nemesis_interval: 5
 nemesis_during_prepare: false
+seeds_num: 3
 
 user_prefix: 'longevity-rbno-200gb-48h-Decommission'
