@@ -167,6 +167,7 @@ class ScyllaYaml(BaseModel):  # pylint: disable=too-few-public-methods
     hinted_handoff_throttle_in_kb: int = 1024
     max_hint_window_in_ms: int = 10800000
     max_hints_delivery_threads: int = 2
+    max_hinted_handoff_concurrency: int = 2
     batchlog_replay_throttle_in_kb: int = 1024
     request_scheduler: Literal[
         'org.apache.cassandra.scheduler.NoScheduler',

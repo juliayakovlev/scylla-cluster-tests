@@ -1,4 +1,4 @@
-test_duration: 210
+test_duration: 420
 bench_run: true
 
 stress_cmd: ["scylla-bench -workload=timeseries -mode=write -replication-factor=3 -partition-count=400 -clustering-row-count=10000000 -clustering-row-size=200 -concurrency=100 -rows-per-request=100 -start-timestamp=SET_WRITE_TIMESTAMP -connection-count 100 -max-rate 50000 --timeout 120s -duration=170m"]
@@ -6,8 +6,8 @@ stress_cmd: ["scylla-bench -workload=timeseries -mode=write -replication-factor=
 # calculated from timeseries workload for write mode by formula:
 # write-rate = -max-rate / -partition-count = 50000 / 400 = 125
 stress_read_cmd: [
-    "scylla-bench -workload=timeseries -mode=read -partition-count=20000 -concurrency=100 -replication-factor=3 -clustering-row-count=10000000 -clustering-row-size=200  -rows-per-request=100 -start-timestamp=GET_WRITE_TIMESTAMP -write-rate 125 -distribution hnormal --connection-count 100 -duration=170m",
-    "scylla-bench -workload=timeseries -mode=read -partition-count=20000 -concurrency=100 -replication-factor=3 -clustering-row-count=10000000 -clustering-row-size=200  -rows-per-request=100 -start-timestamp=GET_WRITE_TIMESTAMP -write-rate 125 -distribution uniform --connection-count 100 -duration=170m"
+    "scylla-bench -workload=timeseries -mode=read -partition-count=20000 -concurrency=100 -replication-factor=3 -clustering-row-count=10000000 -clustering-row-size=200  -rows-per-request=100 -start-timestamp=GET_WRITE_TIMESTAMP -write-rate 125 -distribution hnormal --connection-count 100 -duration=370m",
+    "scylla-bench -workload=timeseries -mode=read -partition-count=20000 -concurrency=100 -replication-factor=3 -clustering-row-count=10000000 -clustering-row-size=200  -rows-per-request=100 -start-timestamp=GET_WRITE_TIMESTAMP -write-rate 125 -distribution uniform --connection-count 100 -duration=370m"
     ]
 
 n_db_nodes: 5
@@ -17,7 +17,7 @@ n_monitor_nodes: 1
 round_robin: true
 instance_type_db: 'i3.2xlarge'
 
-nemesis_class_name: 'SisyphusMonkey'
+nemesis_class_name: 'ValidateHintedHandoffShortDowntime'
 nemesis_seed: '024'
 nemesis_interval: 15
 nemesis_during_prepare: false

@@ -96,6 +96,10 @@ from test_lib.cql_types import CQLTypeBuilder
 LOGGER = logging.getLogger(__name__)
 
 
+class SetConfigParamFailure(Exception):
+    pass
+
+
 class NoFilesFoundToDestroy(Exception):
     pass
 
@@ -149,14 +153,14 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     # nemesis flags:
     topology_changes: bool = False  # flag that signal that nemesis is changing cluster topology,
     # i.e. adding/removing nodes/data centers
-    disruptive: bool = False        # flag that signal that nemesis disrupts node/cluster,
+    disruptive: bool = False  # flag that signal that nemesis disrupts node/cluster,
     # i.e reboot,kill, hardreboot, terminate
-    run_with_gemini: bool = True    # flag that signal that nemesis runs with gemini tests
-    networking: bool = False        # flag that signal that nemesis interact with nemesis,
+    run_with_gemini: bool = True  # flag that signal that nemesis runs with gemini tests
+    networking: bool = False  # flag that signal that nemesis interact with nemesis,
     # i.e switch off/on network interface, network issues
-    kubernetes: bool = False        # flag that signal that nemesis run with k8s cluster
-    limited: bool = False           # flag that signal that nemesis are belong to limited set of nemesises
-    has_steady_run: bool = False    # flag that signal that nemesis should be run with perf tests with steady run
+    kubernetes: bool = False  # flag that signal that nemesis run with k8s cluster
+    limited: bool = False  # flag that signal that nemesis are belong to limited set of nemesises
+    has_steady_run: bool = False  # flag that signal that nemesis should be run with perf tests with steady run
 
     def __new__(cls, tester_obj, termination_event, *args):  # pylint: disable=unused-argument
         for name, member in inspect.getmembers(cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)):
@@ -560,8 +564,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         # If this error happens during the first boot with the missing disk this issue is expected and it's not an issue
         with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
                             line="Can't find a column family with UUID", node=self.target_node), \
-            DbEventsFilter(db_event=DatabaseLogEvent.BACKTRACE,
-                           line="Can't find a column family with UUID", node=self.target_node):
+                DbEventsFilter(db_event=DatabaseLogEvent.BACKTRACE,
+                               line="Can't find a column family with UUID", node=self.target_node):
             self.target_node.restart()
 
         self.log.info('Waiting scylla services to start after node restart')
@@ -1125,7 +1129,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.target_node.mark_to_be_replaced()
         self._kubernetes_wait_till_node_up_after_been_recreated(self.target_node, old_uid=old_uid)
 
-    def _disrupt_terminate_decommission_add_node_kubernetes(self, node, node_terminate_method_name):  # pylint: disable=invalid-name
+    def _disrupt_terminate_decommission_add_node_kubernetes(self, node,
+                                                            node_terminate_method_name):  # pylint: disable=invalid-name
         self.log.info('Terminate %s', node)
         node_terminate_method = getattr(node, node_terminate_method_name)
         node_terminate_method()
@@ -1134,7 +1139,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         new_node = self.add_new_node(rack=node.rack)
         self.unset_current_running_nemesis(new_node)
 
-    def _disrupt_terminate_and_replace_node_kubernetes(self, node, node_terminate_method_name):  # pylint: disable=invalid-name
+    def _disrupt_terminate_and_replace_node_kubernetes(self, node,
+                                                       node_terminate_method_name):  # pylint: disable=invalid-name
         old_uid = node.k8s_pod_uid
         self.log.info('TerminateNode %s (uid=%s)', node, old_uid)
         node_terminate_method = getattr(node, node_terminate_method_name)
@@ -2117,15 +2123,15 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
                                 line="repair's stream failed: streaming::stream_exception",
                                 node=self.target_node), \
-                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                               line="Can not find stream_manager",
-                               node=self.target_node), \
-                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                               line="is aborted",
-                               node=self.target_node), \
-                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                               line="Failed to repair",
-                               node=self.target_node):
+                    DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                                   line="Can not find stream_manager",
+                                   node=self.target_node), \
+                    DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                                   line="is aborted",
+                                   node=self.target_node), \
+                    DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                                   line="Failed to repair",
+                                   node=self.target_node):
                 self.target_node.remoter.run(
                     "curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json'"
                     " http://127.0.0.1:10000/storage_service/force_terminate_repair"
@@ -2135,6 +2141,69 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
 
         self.log.debug("Execute a complete repair for target node")
         self.repair_nodetool_repair()
+
+    def disrupt_validate_hh_short_downtime(self):  # pylint: disable=invalid-name
+        """
+            Validates that hinted handoff mechanism works: there were no drops and errors
+            during short stop of one of the nodes in cluster
+        """
+        def _live_update_max_hh_concurrency_param_on_all_nodes(param_value):
+            """
+            max_hinted_handoff_concurrency parameter is allowed be changed at runtime
+            (https://github.com/scylladb/scylla/blob/948bc359c23c86a97f34987017edc30143c03c74/db/config.cc#L658)
+            Change configuration in scylla.yaml and make it effective (re-read the configuration file without restart).
+            """
+            for node in self.cluster.nodes:
+                self.log.debug("Set max_hinted_handoff_concurrency = %d to node %s", param_value, node.name)
+                with node.remote_scylla_yaml() as scylla_yaml:
+                    scylla_yaml.max_hinted_handoff_concurrency = param_value
+                # Signalling the scylla process with SIGHUP (1) to trigger the configuration change effective
+                node.remoter.sudo("pkill -f --signal 1 /usr/bin/scylla")
+                self.log.debug("'max_hinted_handoff_concurrency' is set to %s on the node %s",
+                               node.get_scylla_config_param('max_hinted_handoff_concurrency'), node.name)
+
+        if self.cluster.params.get('hinted_handoff') == 'disabled':
+            raise UnsupportedNemesis('For this nemesis to work, `hinted_handoff` needs to be set to `enabled`')
+
+        start_time = time.time()
+
+        # The max_hinted_handoff_concurrency parameter was added by
+        # https://github.com/scylladb/scylla/commit/de1679b1b99435bea9d2e801d0e7f61785aed8ff
+        if origin_max_hinted_handoff_concurrency := self.target_node.get_scylla_config_param(
+                'max_hinted_handoff_concurrency'):
+            # test_max_hinted_handoff_concurrency = random.randint(42, 100)
+            test_max_hinted_handoff_concurrency = 4
+            _live_update_max_hh_concurrency_param_on_all_nodes(param_value=test_max_hinted_handoff_concurrency)
+            InfoEvent("Run ValidateHintedHandoffShortDowntime nemesis with max_hinted_handoff_concurrency "
+                      f"{self.target_node.get_scylla_config_param('max_hinted_handoff_concurrency')}").publish()
+
+        self.target_node.stop_scylla()
+        time.sleep(10)
+        self.target_node.start_scylla()
+
+        # Wait until all other nodes see the target node as UN
+        # Only then we can expect that hint sending started on all nodes
+        def target_node_reported_un_by_others():
+            for node in self.cluster.nodes:
+                if node is not self.target_node:
+                    self.cluster.check_nodes_up_and_normal(nodes=[self.target_node], verification_node=node)
+            return True
+
+        wait.wait_for(func=target_node_reported_un_by_others,
+                      timeout=300,
+                      step=5,
+                      throw_exc=True,
+                      text='Wait for target_node to be seen as UN by others')
+
+        time.sleep(120)  # Wait to complete hints sending
+        assert self.tester.hints_sending_in_progress() is False, "Hints are sent too slow"
+        self.tester.verify_no_drops_and_errors(starting_from=start_time)
+
+        if origin_max_hinted_handoff_concurrency:
+            _live_update_max_hh_concurrency_param_on_all_nodes(param_value=origin_max_hinted_handoff_concurrency)
+
+        self.log.info("max_hinted_handoff_concurrency in the end of nemesis is %s",
+                      self.target_node.get_scylla_config_param('max_hinted_handoff_concurrency'))
 
     # NOTE: enable back when 'https://github.com/scylladb/scylla/issues/8136' issue is fixed
     def disable_disrupt_validate_hh_short_downtime(self):  # pylint: disable=invalid-name
@@ -2510,7 +2579,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 self.log.error(f"nodetool removenode command exited with status {exit_status}")
                 self.log.debug(
                     f"Remove failed node {node_to_remove} from dead node list {self.cluster.dead_nodes_list}")
-                node = next((n for n in self.cluster.dead_nodes_list if n.ip_address == node_to_remove.ip_address), None)
+                node = next((n for n in self.cluster.dead_nodes_list if n.ip_address == node_to_remove.ip_address),
+                            None)
                 if node:
                     self.cluster.dead_nodes_list.remove(node)
                 else:
@@ -2519,7 +2589,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             # verify node is removed by nodetool status
             removed_node_status = self.cluster.get_node_status_dictionary(
                 ip_address=node_to_remove.ip_address, verification_node=verification_node)
-            assert removed_node_status is None,\
+            assert removed_node_status is None, \
                 "Node was not removed properly (Node status:{})".format(removed_node_status)
 
             # add new node
@@ -2781,15 +2851,15 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         with DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
                             line="This node was decommissioned and will not rejoin",
                             node=self.target_node), \
-            DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                           line="Fail to send STREAM_MUTATION_DONE",
-                           node=self.target_node), \
-            DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
-                           line="streaming::stream_exception",
-                           node=self.target_node), \
-            DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                           line="got error in row level repair",
-                           node=self.target_node):
+                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                               line="Fail to send STREAM_MUTATION_DONE",
+                               node=self.target_node), \
+                DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                               line="streaming::stream_exception",
+                               node=self.target_node), \
+                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                               line="got error in row level repair",
+                               node=self.target_node):
             self.target_node.reboot(hard=True, verify_ssh=True)
             streaming_thread.join(60)
 
@@ -2958,7 +3028,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not self.cluster.params.get('server_encrypt'):
             raise UnsupportedNemesis('Server Encryption is not enabled, hence skipping')
 
-        @timeout_decor(timeout=20, allowed_exceptions=(LogContentNotFound, ))
+        @timeout_decor(timeout=20, allowed_exceptions=(LogContentNotFound,))
         def check_ssl_reload_log(node_system_log):
             if not list(node_system_log):
                 raise LogContentNotFound('Reload SSL message not found in node log')
@@ -3392,7 +3462,6 @@ class NoOpMonkey(Nemesis):
 
 
 class AddRemoveDcNemesis(Nemesis):
-
     disruptive = False
     kubernetes = False
     run_with_gemini = False
@@ -4012,7 +4081,7 @@ class ValidateHintedHandoffShortDowntime(Nemesis):
     kubernetes = True
 
     def disrupt(self):
-        self.disable_disrupt_validate_hh_short_downtime()
+        self.disrupt_validate_hh_short_downtime()
 
 
 class SnapshotOperations(Nemesis):
@@ -4294,7 +4363,6 @@ class CDCStressorMonkey(Nemesis):
 
 
 class DecommissionStreamingErrMonkey(Nemesis):
-
     disruptive = True
     topology_changes = True
 
@@ -4303,7 +4371,6 @@ class DecommissionStreamingErrMonkey(Nemesis):
 
 
 class RebuildStreamingErrMonkey(Nemesis):
-
     disruptive = True
 
     def disrupt(self):
@@ -4311,7 +4378,6 @@ class RebuildStreamingErrMonkey(Nemesis):
 
 
 class RepairStreamingErrMonkey(Nemesis):
-
     disruptive = True
 
     def disrupt(self):

@@ -13,13 +13,14 @@ seeds_num: 3
 
 instance_type_db: 'i3.4xlarge'
 
-nemesis_class_name: 'SisyphusMonkey'
-nemesis_seed: '032'
-nemesis_interval: 5
+nemesis_class_name: 'ValidateHintedHandoffShortDowntime'
+nemesis_seed: '111'
+nemesis_interval: 15
 nemesis_filter_seeds: false
 
-user_prefix: 'longevity-100gb-4h'
-space_node_threshold: 64424
+user_prefix: 'v-hinted-handoff'
+space_node_threshold: 644245094
+hinted_handoff: 'enabled'
 
 pre_create_schema: True
 sstable_size: 100

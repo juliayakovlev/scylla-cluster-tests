@@ -2884,7 +2884,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
                 return None
             if verbose:
                 self.log.debug(f'{config_param_name} parameter value: {request_out.stdout}')
-            return request_out.stdout
+            return request_out.stdout.strip()
         except Exception as e:  # pylint: disable=broad-except
             self.log.error(f'Failed to retreive value of {config_param_name} parameter. Error: {e}')
             return None
