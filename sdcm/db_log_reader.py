@@ -53,6 +53,7 @@ class DbLogReader(Process):
                  system_log: str,
                  remoter: CommandRunner,
                  node_name: str,
+                 node_ip: str,
                  system_event_patterns: list,
                  decoding_queue: Optional[Queue],
                  log_lines: bool,
@@ -62,6 +63,7 @@ class DbLogReader(Process):
         self._decoding_queue = decoding_queue
         self._log_lines = log_lines
         self._node_name = node_name
+        self._node_ip = node_ip
 
         self._terminate_event = Event()
         self._last_error: LogEvent | None = None
@@ -175,7 +177,7 @@ class DbLogReader(Process):
                 scylla_debug_info = self.get_scylla_debuginfo_file()
                 LOGGER.debug("Debug info file %s", scylla_debug_info)
                 self._decoding_queue.put({
-                    "node": self._node_name,
+                    "node_ip": self._node_ip,
                     "debug_file": scylla_debug_info,
                     "event": backtrace["event"],
                 })

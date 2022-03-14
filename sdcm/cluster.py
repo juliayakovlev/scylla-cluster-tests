@@ -971,6 +971,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             system_log=self.system_log,
             remoter=self.remoter,
             node_name=str(self.name),
+            node_ip=self.ip_address,
             system_event_patterns=SYSTEM_ERROR_EVENTS_PATTERNS,
             decoding_queue=self.test_config.DECODING_QUEUE,
             log_lines=self.parent_cluster.params.get('logs_transport') in ['rsyslog', 'syslog-ng']
@@ -1457,7 +1458,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
                     break
                 event = obj["event"]
                 if not scylla_debug_file:
-                    scylla_debug_file = self.copy_scylla_debug_info(obj["node"], obj["debug_file"])
+                    scylla_debug_file = self.copy_scylla_debug_info(obj["node_ip"], obj["debug_file"])
                 output = self.decode_raw_backtrace(scylla_debug_file, " ".join(event.raw_backtrace.split('\n')))
                 event.backtrace = output.stdout
                 self.test_config.DECODING_QUEUE.task_done()
@@ -1472,21 +1473,28 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             if self.termination_event.is_set() and self.test_config.DECODING_QUEUE.empty():
                 break
 
-    def copy_scylla_debug_info(self, node, debug_file):
+    def copy_scylla_debug_info(self, node_ip, debug_file):
         """Copy scylla debug file from db-node to monitor-node
 
         Copy via builder
-        :param node: db node
-        :type node: BaseNode
+        :param node_ip: db node IP where backtrace happened
+        :type node_ip: str
         :param scylla_debug_file: path to scylla_debug_file on db-node
         :type scylla_debug_file: str
         :returns: path on monitor node
         :rtype: {str}
         """
         base_scylla_debug_file = os.path.basename(debug_file)
-        transit_scylla_debug_file = os.path.join(node.parent_cluster.logdir,
+        transit_scylla_debug_file = os.path.join(self.parent_cluster.logdir,
                                                  base_scylla_debug_file)
         final_scylla_debug_file = os.path.join("/tmp", base_scylla_debug_file)
+
+        node = self.parent_cluster.find_node_by_ip(node_ip)
+        if not node:
+            raise NoValue(f"Failed to find node by IP: {node_ip}")
+
+        self.log.info("Copy Scylla debug file '%s' from %s node to monitor node %s",
+                      final_scylla_debug_file, node.name, self)
 
         if not os.path.exists(transit_scylla_debug_file):
             node.remoter.receive_files(debug_file, transit_scylla_debug_file)
