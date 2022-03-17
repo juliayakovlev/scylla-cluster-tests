@@ -254,10 +254,12 @@ class ManagerTask:
         # │ 35.86.127.236 │      99% │ 944.800M │ 944.764M │            0 │      0 │
         # │ 44.200.32.210 │     100% │ 944.777M │ 944.777M │            0 │      0 │
         # ╰───────────────┴──────────┴──────────┴──────────┴──────────────┴────────╯
+        LOGGER.info("progress_string is_v3_cli: %s", self.sctool.is_v3_cli)
         if self.sctool.is_v3_cli:
             cmd = f" -c {self.cluster_id} progress {self.id}"
         else:
             cmd = f" -c {self.cluster_id} task progress {self.id}"
+        LOGGER.info("progress_string cmd: %s", cmd)
         res = self.sctool.run(cmd=cmd, **kwargs)
         return res
 
@@ -1205,6 +1207,7 @@ class SCTool:
 
     @property
     def client_version(self):
+        LOGGER.info("client_version: %s", self.version[0][0].strip("Client version: "))
         return self.version[0][0].strip("Client version: ")
 
     @property
@@ -1213,6 +1216,8 @@ class SCTool:
 
     @property
     def is_v3_cli(self):
+        LOGGER.info("is_v3_cli, self.parsed_client_version: %s", self.parsed_client_version)
+        LOGGER.info("is_v3_cli, new_command_structure_minimum_version: %s", new_command_structure_minimum_version)
         return self.parsed_client_version >= new_command_structure_minimum_version
 
 
