@@ -133,7 +133,7 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
         self.log.debug("Created instances: %s." % instances)
         return instances
 
-    def _create_spot_instances(self, count, interfaces, ec2_user_data='', dc_idx=0):  # pylint: disable=too-many-arguments
+    def _create_spot_instances(self, count, interfaces, instance_provision, ec2_user_data='', dc_idx=0):  # pylint: disable=too-many-arguments
         # pylint: disable=too-many-locals
         ec2 = ec2_client.EC2ClientWarpper(region_name=self.region_names[dc_idx],
                                           spot_max_price_percentage=self.params.get('spot_max_price'))
@@ -147,11 +147,11 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
                            count=count,
                            block_device_mappings=self._ec2_block_device_mappings,
                            aws_instance_profile=self.params.get('aws_instance_profile_name'))
-        if self.instance_provision == INSTANCE_PROVISION_SPOT_DURATION:
+        if instance_provision == INSTANCE_PROVISION_SPOT_DURATION:
             # duration value must be a multiple of 60
             spot_params.update({'duration': self.calculate_spot_duration_for_test()})
 
-        limit = SPOT_FLEET_LIMIT if self.instance_provision == INSTANCE_PROVISION_SPOT_FLEET else SPOT_CNT_LIMIT
+        limit = SPOT_FLEET_LIMIT if instance_provision == INSTANCE_PROVISION_SPOT_FLEET else SPOT_CNT_LIMIT
         request_cnt = 1
         tail_cnt = 0
         if count > limit:
@@ -165,7 +165,7 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
             if tail_cnt and i == request_cnt - 1:
                 spot_params['count'] = tail_cnt
 
-            if self.instance_provision == INSTANCE_PROVISION_SPOT_FLEET and count > 1:
+            if instance_provision == INSTANCE_PROVISION_SPOT_FLEET and count > 1:
                 instances_i = ec2.create_spot_fleet(**spot_params)
             else:
                 instances_i = ec2.create_spot_instances(**spot_params)
@@ -198,7 +198,9 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
         elif self.instance_provision == INSTANCE_PROVISION_ON_DEMAND:
             instances = self._create_on_demand_instances(count, interfaces, ec2_user_data, dc_idx)
         elif self.instance_provision == INSTANCE_PROVISION_SPOT_FLEET and count > 1:
-            instances = self._create_spot_instances(count, interfaces, ec2_user_data, dc_idx)
+            instances = self._create_spot_instances(count=count, interfaces=interfaces,
+                                                    instance_provision=self.instance_provision,
+                                                    ec2_user_data=ec2_user_data, dc_idx=dc_idx)
         else:
             instances = self.fallback_provision_type(count, interfaces, ec2_user_data, dc_idx)
 
@@ -242,7 +244,9 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
                 if instances_provision_type == INSTANCE_PROVISION_ON_DEMAND:
                     instances = self._create_on_demand_instances(count, interfaces, ec2_user_data, dc_idx)
                 else:
-                    instances = self._create_spot_instances(count, interfaces, ec2_user_data, dc_idx)
+                    instances = self._create_spot_instances(count=count, interfaces=interfaces,
+                                                            instance_provision=instances_provision_type,
+                                                            ec2_user_data=ec2_user_data, dc_idx=dc_idx)
                 break
             except CreateSpotInstancesError as cl_ex:
                 if instances_provision_type == instances_provision_fallbacks[-1]:
@@ -284,14 +288,18 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
 
             if count_spot > 0:
                 self.instance_provision = INSTANCE_PROVISION_SPOT_LOW_PRICE
-                instances.extend(self._create_spot_instances(count_spot, interfaces, ec2_user_data, dc_idx))
+                instances.extend(self._create_spot_instances(count=count, interfaces=interfaces,
+                                                             instance_provision=self.instance_provision,
+                                                             ec2_user_data=ec2_user_data, dc_idx=dc_idx))
             if count_on_demand > 0:
                 self.instance_provision = INSTANCE_PROVISION_ON_DEMAND
                 instances.extend(self._create_on_demand_instances(count_on_demand, interfaces, ec2_user_data, dc_idx))
             self.instance_provision = 'mixed'
         elif isinstance(self, LoaderSetAWS):
             self.instance_provision = INSTANCE_PROVISION_SPOT_LOW_PRICE
-            instances = self._create_spot_instances(count, interfaces, ec2_user_data, dc_idx)
+            instances = self._create_spot_instances(count=count, interfaces=interfaces,
+                                                    instance_provision=self.instance_provision,
+                                                    ec2_user_data=ec2_user_data, dc_idx=dc_idx)
         elif isinstance(self, MonitorSetAWS):
             self.instance_provision = INSTANCE_PROVISION_ON_DEMAND
             instances.extend(self._create_on_demand_instances(count, interfaces, ec2_user_data, dc_idx))
