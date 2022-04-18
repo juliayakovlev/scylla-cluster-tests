@@ -2925,12 +2925,19 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         InfoEvent(message=f'Start shrink cluster by {add_nodes_number} nodes').publish()
         # Check that number of nodes is enough for decommission:
         cur_num_nodes_in_dc = len([n for n in self.cluster.nodes if n.dc_idx == self.target_node.dc_idx])
+        all_nodes = [(n.name, n.dc_idx) for n in self.cluster.nodes]
+        self.log.info("number of nodes in cluster: %s", all_nodes)
+        self.log.info("current number of nodes: %s", cur_num_nodes_in_dc)
         initial_db_size = self.tester.params.get("n_db_nodes")
+        self.log.info("initial db size: %s", initial_db_size)
+
         if isinstance(initial_db_size, int):
             decommission_nodes_number = min(cur_num_nodes_in_dc - initial_db_size, add_nodes_number)
         else:
             initial_db_size_in_dc = int(initial_db_size.split(" ")[self.target_node.dc_idx])
+            self.log.info("initial db size in dc: %s", initial_db_size_in_dc)
             decommission_nodes_number = min(cur_num_nodes_in_dc - initial_db_size_in_dc, add_nodes_number)
+        self.log.info("decommission_nodes_number: %s", decommission_nodes_number)
 
         if decommission_nodes_number < 1:
             error = "Not enough nodes for decommission"
