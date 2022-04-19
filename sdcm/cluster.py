@@ -301,7 +301,8 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
     def _init_argus_resource(self):
         try:
             run = ArgusTestRun.get()
-            shards = self.scylla_shards if "db-node" in self.instance_name else self.cpu_cores
+            shards = 0
+            # shards = self.scylla_shards if "db-node" in self.instance_name else self.cpu_cores
             shards = int(shards) if shards else 0
             instance_details = CloudInstanceDetails(public_ip=self.public_ip_address, region=self.region,
                                                     provider=self.parent_cluster.cluster_backend,
@@ -582,7 +583,9 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             return ''
 
         try:
+            # Waiting for a 5 minutes when cpuset.conf file will be created
             grep_result = self.remoter.run('grep "^CPUSET" /etc/scylla.d/cpuset.conf')
+            # grep_result = self.remoter.run('grep "^CPUSET" /etc/scylla.d/cpuset.conf', verbose=False, retry=60)
         except Exception as exc:  # pylint: disable=broad-except
             self.log.error(f"Failed to get CPUSET. Error: {exc}")
             return ''
