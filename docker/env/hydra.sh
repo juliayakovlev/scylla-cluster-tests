@@ -107,7 +107,7 @@ if [[ -n "${CREATE_RUNNER_INSTANCE}" ]]; then
         echo "Or use 'hydra --execute-on-runner ${RUNNER_IP} ...' to run command on existing runner"
         exit 1
     fi
-    echo ">>> Create a new SCT runner instance"
+    echo ">>> Create a new SCT runner instance: '${RESTORE_MONITOR_RUNNER}'"
     echo
     if [[ -z "${HYDRA_DRY_RUN}" ]]; then
         HYDRA=$0
@@ -119,7 +119,8 @@ if [[ -n "${CREATE_RUNNER_INSTANCE}" ]]; then
       --region "${RUNNER_REGION:-us-east-1}" \
       --availability-zone "${RUNNER_AZ:-a}" \
       --test-id "${SCT_TEST_ID}" \
-      --duration "${RUNNER_DURATION:-1440}"
+      --duration "${RUNNER_DURATION:-1440}" \
+      --restore-monitor "${RESTORE_MONITOR_RUNNER}"
     if [[ -z "${HYDRA_DRY_RUN}" ]]; then
         RUNNER_IP=$(<"${RUNNER_IP_FILE}")
     else

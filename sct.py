@@ -1301,17 +1301,22 @@ def create_runner_image(cloud_provider, region, availability_zone):
 @click.option("-i", "--instance-type", required=False, type=str, default="", help="Instance type")
 @click.option("-t", "--test-id", required=True, type=str, help="Test ID")
 @click.option("-d", "--duration", required=True, type=int, help="Test duration in MINUTES")
-def create_runner_instance(cloud_provider, region, availability_zone, instance_type, test_id, duration):
+@click.option("-rm", "--restore-monitor", required=False, type=bool,
+              help="Is the runner for restore monitor purpose or not")
+def create_runner_instance(cloud_provider, region, availability_zone, instance_type, test_id, duration,
+                           restore_monitor=False):
     if cloud_provider == "aws":
         assert len(availability_zone) == 1, f"Invalid AZ: {availability_zone}, availability-zone is one-letter a-z."
     add_file_logger()
     sct_runner_ip_path = Path("sct_runner_ip")
     sct_runner_ip_path.unlink(missing_ok=True)
     sct_runner = get_sct_runner(cloud_provider=cloud_provider, region_name=region, availability_zone=availability_zone)
+    LOGGER.info("restore_monitor: %s", restore_monitor)
     instance = sct_runner.create_instance(
         instance_type=instance_type,
         test_id=test_id,
         test_duration=duration,
+        restore_monitor=restore_monitor,
     )
     if not instance:
         sys.exit(1)

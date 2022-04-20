@@ -339,7 +339,8 @@ class SctRunner(ABC):
     def _get_base_image(self, image: Optional[Any] = None) -> Any:
         ...
 
-    def create_instance(self, test_id: str, test_duration: int, instance_type: str = "") -> Any:
+    def create_instance(self, test_id: str, test_duration: int, instance_type: str = "",
+                        restore_monitor: bool = False) -> Any:
         LOGGER.info("Creating SCT Runner instance...")
         image = self.image
         if not image:
@@ -357,7 +358,7 @@ class SctRunner(ABC):
                 "keep": str(ceil(test_duration / 60) + 6),  # keep SCT Runner for 6h more than test_duration
                 "keep_action": "terminate",
             },
-            instance_name=f"{self.image_name}-instance-{test_id[:8]}",
+            instance_name=f"{self.image_name}-{'restored-monitor-' if restore_monitor else ''}instance-{test_id[:8]}",
             region_az=self.region_az(
                 region_name=self.region_name,
                 availability_zone=self.availability_zone,
