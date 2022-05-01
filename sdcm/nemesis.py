@@ -2064,12 +2064,17 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         mgr_cluster = self.cluster.get_cluster_manager()
         if self.cluster.params.get('use_cloud_manager'):
             auto_backup_task = mgr_cluster.backup_task_list[0]
+            self.log.info("auto_backup_task arguments: %s", auto_backup_task.arguments)
             #  An example of the auto generated backup task of cloud manager is:
             #  │ backup/8e40b8b4-5394-42d3-9884-a4ce8ab69687
             #  │ --dc 'AWS_US_EAST_1' -L AWS_US_EAST_1:s3:scylla-cloud-backup-9952-10120-4q4w4d --retention 14
             #  --rate-limit AWS_US_EAST_1:100 --snapshot-parallel '<nil>' --upload-parallel '<nil>'
             #  │ 06 Jun 21 18:10:05 UTC (+1d)  │ NEW
+            self.log.info("auto_backup_task arguments split: %s", auto_backup_task.arguments.split('-L'))
+            self.log.info("auto_backup_task arguments 1: %s", auto_backup_task.arguments.split('-L')[1])
+            self.log.info("auto_backup_task arguments split 1: %s", auto_backup_task.arguments.split('-L')[1].split())
             location = auto_backup_task.arguments.split('-L')[1].split()[0]
+            self.log.info("backup location0: %s", location)
         else:
             if not self.cluster.params.get('backup_bucket_location'):
                 raise UnsupportedNemesis('backup bucket location configuration is not defined!')
@@ -2077,6 +2082,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             backup_bucket_backend = self.cluster.params.get("backup_bucket_backend")
             backup_bucket_location = self.cluster.params.get("backup_bucket_location")
             location = f"{backup_bucket_backend}:{backup_bucket_location.split()[0]}"
+        self.log.info("backup location1: %s", location)
         if backup_specific_tables:
             non_test_keyspaces = self.cluster.get_test_keyspaces()
             mgr_task = mgr_cluster.create_backup_task(location_list=[location, ], keyspace_list=non_test_keyspaces)
