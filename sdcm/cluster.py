@@ -2558,15 +2558,26 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
         with self.remote_scylla_yaml() as scylla_yml:
             scylla_yml.murmur3_partitioner_ignore_msb_bits = murmur3_partitioner_ignore_msb_bits
 
-        search_reshard = self.follow_system_log(patterns=[DB_LOG_PATTERN_RESHARDING_START])
-        self.start_scylla(timeout=7200)
-        resharding_started = list(search_reshard)
+        search_reshard_start = self.follow_system_log(patterns=[DB_LOG_PATTERN_RESHARDING_START])
+        search_reshard_finish = self.follow_system_log(patterns=[DB_LOG_PATTERN_RESHARDING_FINISH])
+        start_scylla_timeout = 7200
+        self.start_scylla(timeout=start_scylla_timeout)
+        resharding_started = list(search_reshard_start)
+        resharding_finished = list(search_reshard_finish)
 
         if resharding_started:
-            self.log.debug(f'Resharding has been finished successfully '
+            self.log.debug(f'Resharding has been started successfully '
                            f'(murmur3_partitioner_ignore_msb_bits={murmur3_partitioner_ignore_msb_bits})')
         else:
             raise Exception(f'Resharding has not been started '
+                            f'(murmur3_partitioner_ignore_msb_bits={murmur3_partitioner_ignore_msb_bits}) '
+                            'Check the log for the details')
+
+        if resharding_finished:
+            self.log.debug(f'Resharding has been finished successfully '
+                           f'(murmur3_partitioner_ignore_msb_bits={murmur3_partitioner_ignore_msb_bits})')
+        else:
+            raise Exception(f'Resharding has not been finished within {start_scylla_timeout}'
                             f'(murmur3_partitioner_ignore_msb_bits={murmur3_partitioner_ignore_msb_bits}) '
                             'Check the log for the details')
 
