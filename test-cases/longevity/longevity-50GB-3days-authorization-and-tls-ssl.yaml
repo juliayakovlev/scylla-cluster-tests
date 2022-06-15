@@ -16,10 +16,11 @@ instance_type_db: 'i3.4xlarge'
 instance_type_loader: 'c5.2xlarge'
 
 nemesis_class_name: 'SisyphusMonkey'
+nemesis_multiply_factor: 60
 nemesis_seed: '027'
 nemesis_interval: 5
 
-user_prefix: 'longevity-tls-50gb-3d'
+user_prefix: 'issue-10743-longevity-tls-50gb-3d'
 
 space_node_threshold: 644245094
 

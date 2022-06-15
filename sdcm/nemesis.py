@@ -1410,7 +1410,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 disruptions = []
         else:
             disruptions = [attr[1] for attr in inspect.getmembers(self)
-                           if attr[0].startswith('disrupt_') and callable(attr[1])]
+                           if attr[0] in ['disrupt_restart_with_resharding', 'disrupt_nodetool_refresh']
+                           and callable(attr[1])]
 
         nemesis_multiply_factor = self.cluster.params.get('nemesis_multiply_factor')
         if nemesis_multiply_factor:
