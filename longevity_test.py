@@ -136,7 +136,13 @@ class LongevityTest(ClusterTester):
             # Wait for some data (according to the param in the yaml) to be populated, for multi keyspace need to
             # pay attention to the fact it checks only on keyspace1
             self.db_cluster.wait_total_space_used_per_node(keyspace=None)
+            self.log.info("Longevity start nemesis, cluster: %s, k8s_cluster name: %s, nemesis threads: %s, ",
+                          self.db_cluster.name, self.k8s_cluster,
+                          ", ".join(t.name for t in self.db_cluster.nemesis_threads))
             self.db_cluster.start_nemesis()
+            self.log.info("Longevity started nemesis, cluster: %s, k8s_cluster name: %s, nemesis threads: %s, ",
+                          self.db_cluster.name, self.k8s_cluster,
+                          ", ".join(t.name for t in self.db_cluster.nemesis_threads))
 
         # Wait on the queue till all threads come back.
         # todo: we need to improve this part for some cases that threads are being killed and we don't catch it.

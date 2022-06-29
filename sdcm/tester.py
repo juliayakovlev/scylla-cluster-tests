@@ -262,8 +262,12 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
     db_cluster: BaseScyllaCluster = None
     k8s_cluster: Union[eks.EksCluster, gke.GkeCluster, mini_k8s.LocalKindCluster, None] = None
 
-    def __init__(self, *args):  # pylint: disable=too-many-statements,too-many-locals,too-many-branches
+    def __init__(self, *args, **kwargs):  # pylint: disable=too-many-statements,too-many-locals,too-many-branches
+        if self.log:
+            self.log.info("Init ClusterTester - before __init__")
         super().__init__(*args)
+        if self.log:
+            self.log.info("Init ClusterTester - after __init__")
         self.result = None
         self._results = []
         self.status = "RUNNING"
@@ -279,13 +283,18 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
             self.test_config.set_test_id(self.params.get('test_id') or uuid4())
         self.test_config.set_test_name(self.id())
         self.test_config.set_tester_obj(self)
-        self._init_logging()
+        if not self.log:
+            self._init_logging()
+        self.log.info("ClusterTester - before set_default_ssh_transport")
         RemoteCmdRunnerBase.set_default_ssh_transport(self.params.get('ssh_transport'))
+        self.log.info("ClusterTester - after set_default_ssh_transport")
 
         self._profile_factory = None
+        self.log.info("ClusterTester - before ProfilerFactory")
         if self.params.get('enable_test_profiling'):
             self._profile_factory = ProfilerFactory(os.path.join(self.logdir, 'profile.stats'))
             self._profile_factory.activate()
+        self.log.info("ClusterTester - after ProfilerFactory")
 
         ip_ssh_connections = self.params.get(key='ip_ssh_connections')
         self.log.debug("IP used for SSH connections is '%s'",
@@ -345,8 +354,15 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
         if self.params.get("use_ldap"):
             self._init_ldap()
 
-        start_events_device(log_dir=self.logdir, _registry=self.events_processes_registry)
-        time.sleep(0.5)
+        # Cover multi-tenant configuration. Prevent event device double initiate
+        if init_events_device := kwargs.get("start_events_device", True):
+            self.log.info("Logdir: %s\nevents_processes_registry logdir: %s\n_registry: %s",
+                          self.logdir,
+                          self.events_processes_registry.log_dir if self.events_processes_registry else self.events_processes_registry,
+                          getattr(self, "_registry", None))
+            start_events_device(log_dir=self.logdir,
+                                _registry=getattr(self, "_registry", None) or self.events_processes_registry)
+            time.sleep(0.5)
         InfoEvent(message=f"TEST_START test_id={self.test_config.test_id()}").publish()
 
     @cached_property

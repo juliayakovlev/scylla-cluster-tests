@@ -107,7 +107,7 @@ def configure_logging(exception_handler=None,  # pylint: disable=too-many-argume
         formatters = {
             'default': {
                 '()': MultilineMessagesFormatter,
-                'format': '< t:%(asctime)s f:%(filename)-15s l:%(lineno)-4s c:%(name)-20s p:%(levelname)-5s > %(message)s'
+                'format': '< t:%(asctime)s f:%(filename)-15s l:%(lineno)-4s c:%(name)-20s p:%(levelname)-5s T:%(thread)d> %(message)s'
             },
         }
     if filters is None:
