@@ -169,15 +169,25 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     limited: bool = False           # flag that signal that nemesis are belong to limited set of nemesises
     has_steady_run: bool = False    # flag that signal that nemesis should be run with perf tests with steady run
 
+    wrapped_disruptive_methods = []
+
+    def __new__(cls, tester_obj, termination_event, *args):  # pylint: disable=unused-argument
+        for name, member in inspect.getmembers(cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)):
+            if name.startswith(cls.DISRUPT_NAME_PREF) and name not in cls.wrapped_disruptive_methods:
+                # add "disrupt_method_wrapper" decorator to all methods are started with "disrupt_"
+                setattr(cls, name, disrupt_method_wrapper(member))
+                cls.wrapped_disruptive_methods.append(name)
+        return object.__new__(cls)
+
     def __init__(self, tester_obj, termination_event, *args):  # pylint: disable=unused-argument
         # *args -  compatible with CategoricalMonkey
         self.tester = tester_obj  # ClusterTester object
-        disrupt_wrapper = DisruptWrapper()
-        for name, member in inspect.getmembers(self, lambda x: inspect.isfunction(x) or inspect.ismethod(x)):
-            if name.startswith(self.DISRUPT_NAME_PREF):
-                # add "disrupt_method_wrapper" decorator to all methods are started with "disrupt_"
-                # setattr(self, name, MethodType(self.wrapper_disrupt_method(member), self))
-                setattr(self, name, MethodType(disrupt_wrapper.disrupt_method_wrapper(member), self))
+        # disrupt_wrapper = DisruptWrapper()
+        # for name, member in inspect.getmembers(self, lambda x: inspect.isfunction(x) or inspect.ismethod(x)):
+        #     if name.startswith(self.DISRUPT_NAME_PREF):
+        #         # add "disrupt_method_wrapper" decorator to all methods are started with "disrupt_"
+        #         # setattr(self, name, MethodType(self.wrapper_disrupt_method(member), self))
+        #         setattr(self, name, MethodType(disrupt_wrapper.disrupt_method_wrapper(member), self))
 
         self.cluster: Union[BaseCluster, BaseScyllaCluster] = tester_obj.db_cluster
         self.loaders = tester_obj.loaders
@@ -3539,148 +3549,286 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self._verify_multi_dc_keyspace_data(consistency_level="QUORUM")
 
 
+def disrupt_method_wrapper(method):  # pylint: disable=too-many-statements
+    """
+    Log time elapsed for method to run
+
+    :param method: Remote method to wrap.
+    :return: Wrapped method.
+    """
+
+    def argus_create_nemesis_info(nemesis: Nemesis, class_name: str,
+                                  method_name: str, start_time: int | float) -> NemesisRunInfo | None:
+        try:
+            run = ArgusTestRun.get()
+            node_desc = NodeDescription(ip=nemesis.target_node.public_ip_address,
+                                        name=nemesis.target_node.name, shards=nemesis.target_node.scylla_shards)
+            nemesis_info = NemesisRunInfo(class_name=class_name, name=method_name,
+                                          duration=0, start_time=int(start_time), target_node=node_desc,
+                                          status=NemesisStatus.RUNNING)
+            run.run_info.results.add_nemesis(nemesis_info)
+            run.save()
+            return nemesis_info
+        except Exception:  # pylint: disable=broad-except
+            nemesis.log.error("Error saving nemesis_info to Argus", exc_info=True)
+        return None
+
+    def argus_finalize_nemesis_info(nemesis: Nemesis, nemesis_info: NemesisRunInfo, nemesis_event: DisruptionEvent):
+        try:
+            run = ArgusTestRun.get()
+            if nemesis_event.severity == Severity.ERROR:
+                nemesis_info.complete(nemesis_event.full_traceback)
+            elif nemesis_event.is_skipped:
+                nemesis_info.complete(nemesis_event.skip_reason)
+                nemesis_info.status = NemesisStatus.SKIPPED
+            else:
+                nemesis_info.complete()
+            nemesis_info.duration = nemesis_info.end_time - nemesis_info.start_time
+            run.save()
+        except Exception:  # pylint: disable=broad-except
+            nemesis.log.error("Error saving nemesis_info to Argus", exc_info=True)
+
+    def data_validation_prints(args):
+        try:
+            if hasattr(args[0].tester, 'data_validator') and args[0].tester.data_validator:
+                with args[0].cluster.cql_connection_patient(
+                        args[0].cluster.nodes[0], keyspace=args[0].tester.data_validator.keyspace_name) as session:
+                    args[0].tester.data_validator.validate_range_not_expected_to_change(session, during_nemesis=True)
+                    args[0].tester.data_validator.validate_range_expected_to_change(session, during_nemesis=True)
+                    args[0].tester.data_validator.validate_deleted_rows(session, during_nemesis=True)
+        except Exception as err:  # pylint: disable=broad-except
+            args[0].log.debug(f'Data validator error: {err}')
+
+    @wraps(method)
+    def wrapper(*args, **kwargs):  # pylint: disable=too-many-statements
+        # pylint: disable=too-many-locals
+        # pylint: disable=too-many-branches
+        args[0].set_target_node()
+        method_name = method.__name__
+        args[0].current_disruption = "".join(p.capitalize() for p in method_name.replace("disrupt_", "").split("_"))
+        args[0].cluster.check_cluster_health()
+        num_nodes_before = len(args[0].cluster.nodes)
+        start_time = time.time()
+        args[0].log.debug('Start disruption at `%s`', datetime.datetime.fromtimestamp(start_time))
+        class_name = args[0].get_class_name()
+        if class_name.find('Chaos') < 0:
+            args[0].metrics_srv.event_start(class_name)
+        result = None
+        status = True
+        # pylint: disable=protected-access
+        args[0]._set_current_disruption(f"{args[0].current_disruption} {args[0].target_node}")
+        args[0].set_current_running_nemesis(node=args[0].target_node)
+        log_info = {
+            'operation': args[0].current_disruption,
+            'start': int(start_time),
+            'end': 0,
+            'duration': 0,
+            'node': str(args[0].target_node),
+            'subtype': 'end',
+        }
+        # TODO: Temporary print. Will be removed later
+        data_validation_prints(args=args)
+
+        with DisruptionEvent(nemesis_name=args[0].get_disrupt_name(),
+                             node=args[0].target_node, publish_event=True) as nemesis_event:
+            nemesis_info = argus_create_nemesis_info(nemesis=args[0], class_name=class_name,
+                                                     method_name=method_name, start_time=start_time)
+            try:
+                result = method(*args, **kwargs)
+            except (UnsupportedNemesis, MethodVersionNotFound) as exp:
+                skip_reason = str(exp)
+                log_info.update({'subtype': 'skipped', 'skip_reason': skip_reason})
+                nemesis_event.skip(skip_reason=skip_reason)
+            except Exception as details:  # pylint: disable=broad-except
+                nemesis_event.add_error([str(details)])
+                nemesis_event.full_traceback = traceback.format_exc()
+                nemesis_event.severity = Severity.ERROR
+                args[0].error_list.append(str(details))
+                args[0].log.error('Unhandled exception in method %s', method, exc_info=True)
+                log_info.update({'error': str(details), 'full_traceback': traceback.format_exc()})
+                status = False
+
+        end_time = time.time()
+        time_elapsed = int(end_time - start_time)
+        log_info.update({
+            'end': int(end_time),
+            'duration': time_elapsed,
+        })
+        args[0].duration_list.append(time_elapsed)
+        args[0].operation_log.append(copy.deepcopy(log_info))
+        args[0].log.debug('%s duration -> %s s', args[0].current_disruption, time_elapsed)
+
+        if class_name.find('Chaos') < 0:
+            args[0].metrics_srv.event_stop(class_name)
+        disrupt = args[0].get_disrupt_name()
+        del log_info['operation']
+
+        try:  # So that the nemesis thread won't stop due to elasticsearch failure
+            args[0].update_stats(disrupt, status, log_info)
+        except ElasticSearchConnectionTimeout as err:
+            args[0].log.warning(f"Connection timed out when attempting to update elasticsearch statistics:\n"
+                                f"{err}")
+        except Exception as err:  # pylint: disable=broad-except
+            args[0].log.warning(f"Unexpected error when attempting to update elasticsearch statistics:\n"
+                                f"{err}")
+        args[0].log.info(f"log_info: {log_info}")
+        nemesis_event.duration = time_elapsed
+        args[0].cluster.check_cluster_health()
+        num_nodes_after = len(args[0].cluster.nodes)
+        if num_nodes_before != num_nodes_after:
+            args[0].log.error('num nodes before %s and nodes after %s does not match' %
+                              (num_nodes_before, num_nodes_after))
+        if nemesis_info:
+            argus_finalize_nemesis_info(nemesis=args[0], nemesis_info=nemesis_info, nemesis_event=nemesis_event)
+        # TODO: Temporary print. Will be removed later
+        data_validation_prints(args=args)
+        return result
+
+    return wrapper
+
+
 # pylint: disable=too-few-public-methods
-class DisruptWrapper:
-    def __init__(self):
-        LOGGER.info("My id: %s", str(id(self)))
-
-    def disrupt_method_wrapper(self, method):  # pylint: disable=too-many-statements
-        """
-        Log time elapsed for method to run
-
-        :param method: Remote method to wrap.
-        :return: Wrapped method.
-        """
-
-        def argus_create_nemesis_info(nemesis: Nemesis, class_name: str,
-                                      method_name: str, start_time: int | float) -> NemesisRunInfo | None:
-            try:
-                run = ArgusTestRun.get()
-                node_desc = NodeDescription(ip=nemesis.target_node.public_ip_address,
-                                            name=nemesis.target_node.name, shards=nemesis.target_node.scylla_shards)
-                nemesis_info = NemesisRunInfo(class_name=class_name, name=method_name,
-                                              duration=0, start_time=int(start_time), target_node=node_desc,
-                                              status=NemesisStatus.RUNNING)
-                run.run_info.results.add_nemesis(nemesis_info)
-                run.save()
-                return nemesis_info
-            except Exception:  # pylint: disable=broad-except
-                nemesis.log.error("Error saving nemesis_info to Argus", exc_info=True)
-            return None
-
-        def argus_finalize_nemesis_info(nemesis: Nemesis, nemesis_info: NemesisRunInfo, nemesis_event: DisruptionEvent):
-            try:
-                run = ArgusTestRun.get()
-                if nemesis_event.severity == Severity.ERROR:
-                    nemesis_info.complete(nemesis_event.full_traceback)
-                elif nemesis_event.is_skipped:
-                    nemesis_info.complete(nemesis_event.skip_reason)
-                    nemesis_info.status = NemesisStatus.SKIPPED
-                else:
-                    nemesis_info.complete()
-                nemesis_info.duration = nemesis_info.end_time - nemesis_info.start_time
-                run.save()
-            except Exception:  # pylint: disable=broad-except
-                nemesis.log.error("Error saving nemesis_info to Argus", exc_info=True)
-
-        def data_validation_prints(args):
-            try:
-                if hasattr(args[0].tester, 'data_validator') and args[0].tester.data_validator:
-                    with args[0].cluster.cql_connection_patient(
-                            args[0].cluster.nodes[0], keyspace=args[0].tester.data_validator.keyspace_name) as session:
-                        args[0].tester.data_validator.validate_range_not_expected_to_change(session,
-                                                                                            during_nemesis=True)
-                        args[0].tester.data_validator.validate_range_expected_to_change(session, during_nemesis=True)
-                        args[0].tester.data_validator.validate_deleted_rows(session, during_nemesis=True)
-            except Exception as err:  # pylint: disable=broad-except
-                args[0].log.debug(f'Data validator error: {err}')
-
-        @wraps(method)
-        def wrapper(*args, **kwargs):  # pylint: disable=too-many-statements
-            # pylint: disable=too-many-locals
-            # pylint: disable=too-many-branches
-            args[0].set_target_node()
-            method_name = method.__name__
-            args[0].current_disruption = "".join(p.capitalize() for p in method_name.replace("disrupt_", "").split("_"))
-            args[0].cluster.check_cluster_health()
-            num_nodes_before = len(args[0].cluster.nodes)
-            start_time = time.time()
-            args[0].log.debug('Start disruption at `%s`', datetime.datetime.fromtimestamp(start_time))
-            class_name = args[0].get_class_name()
-            if class_name.find('Chaos') < 0:
-                args[0].metrics_srv.event_start(class_name)
-            result = None
-            status = True
-            # pylint: disable=protected-access
-            args[0]._set_current_disruption(f"{args[0].current_disruption} {args[0].target_node}")
-            args[0].set_current_running_nemesis(node=args[0].target_node)
-            log_info = {
-                'operation': args[0].current_disruption,
-                'start': int(start_time),
-                'end': 0,
-                'duration': 0,
-                'node': str(args[0].target_node),
-                'subtype': 'end',
-            }
-            # TODO: Temporary print. Will be removed later
-            data_validation_prints(args=args)
-
-            with DisruptionEvent(nemesis_name=args[0].get_disrupt_name() + f"_{id(args[0])}_w{id(self)}",
-                                 node=args[0].target_node, publish_event=True) as nemesis_event:
-                nemesis_info = argus_create_nemesis_info(nemesis=args[0], class_name=class_name,
-                                                         method_name=method_name, start_time=start_time)
-                try:
-                    result = method(*args[1:], **kwargs)
-                except (UnsupportedNemesis, MethodVersionNotFound) as exp:
-                    skip_reason = str(exp)
-                    log_info.update({'subtype': 'skipped', 'skip_reason': skip_reason})
-                    nemesis_event.skip(skip_reason=skip_reason)
-                except Exception as details:  # pylint: disable=broad-except
-                    nemesis_event.add_error([str(details)])
-                    nemesis_event.full_traceback = traceback.format_exc()
-                    nemesis_event.severity = Severity.ERROR
-                    args[0].error_list.append(str(details))
-                    args[0].log.error('Unhandled exception in method %s', method, exc_info=True)
-                    log_info.update({'error': str(details), 'full_traceback': traceback.format_exc()})
-                    status = False
-
-            end_time = time.time()
-            time_elapsed = int(end_time - start_time)
-            log_info.update({
-                'end': int(end_time),
-                'duration': time_elapsed,
-            })
-            args[0].duration_list.append(time_elapsed)
-            args[0].operation_log.append(copy.deepcopy(log_info))
-            args[0].log.debug('%s duration -> %s s', args[0].current_disruption, time_elapsed)
-
-            if class_name.find('Chaos') < 0:
-                args[0].metrics_srv.event_stop(class_name)
-            disrupt = args[0].get_disrupt_name()
-            del log_info['operation']
-
-            try:  # So that the nemesis thread won't stop due to elasticsearch failure
-                args[0].update_stats(disrupt, status, log_info)
-            except ElasticSearchConnectionTimeout as err:
-                args[0].log.warning(f"Connection timed out when attempting to update elasticsearch statistics:\n"
-                                    f"{err}")
-            except Exception as err:  # pylint: disable=broad-except
-                args[0].log.warning(f"Unexpected error when attempting to update elasticsearch statistics:\n"
-                                    f"{err}")
-            args[0].log.info(f"log_info: {log_info}")
-            nemesis_event.duration = time_elapsed
-            args[0].cluster.check_cluster_health()
-            num_nodes_after = len(args[0].cluster.nodes)
-            if num_nodes_before != num_nodes_after:
-                args[0].log.error('num nodes before %s and nodes after %s does not match' %
-                                  (num_nodes_before, num_nodes_after))
-            if nemesis_info:
-                argus_finalize_nemesis_info(nemesis=args[0], nemesis_info=nemesis_info, nemesis_event=nemesis_event)
-            # TODO: Temporary print. Will be removed later
-            data_validation_prints(args=args)
-            return result
-
-        return wrapper
+# class DisruptWrapper:
+#     def __init__(self):
+#         LOGGER.info("My id: %s", str(id(self)))
+#
+#     def disrupt_method_wrapper(self, method):  # pylint: disable=too-many-statements
+#         """
+#         Log time elapsed for method to run
+#
+#         :param method: Remote method to wrap.
+#         :return: Wrapped method.
+#         """
+#
+#         def argus_create_nemesis_info(nemesis: Nemesis, class_name: str,
+#                                       method_name: str, start_time: int | float) -> NemesisRunInfo | None:
+#             try:
+#                 run = ArgusTestRun.get()
+#                 node_desc = NodeDescription(ip=nemesis.target_node.public_ip_address,
+#                                             name=nemesis.target_node.name, shards=nemesis.target_node.scylla_shards)
+#                 nemesis_info = NemesisRunInfo(class_name=class_name, name=method_name,
+#                                               duration=0, start_time=int(start_time), target_node=node_desc,
+#                                               status=NemesisStatus.RUNNING)
+#                 run.run_info.results.add_nemesis(nemesis_info)
+#                 run.save()
+#                 return nemesis_info
+#             except Exception:  # pylint: disable=broad-except
+#                 nemesis.log.error("Error saving nemesis_info to Argus", exc_info=True)
+#             return None
+#
+#         def argus_finalize_nemesis_info(nemesis: Nemesis, nemesis_info: NemesisRunInfo, nemesis_event: DisruptionEvent):
+#             try:
+#                 run = ArgusTestRun.get()
+#                 if nemesis_event.severity == Severity.ERROR:
+#                     nemesis_info.complete(nemesis_event.full_traceback)
+#                 elif nemesis_event.is_skipped:
+#                     nemesis_info.complete(nemesis_event.skip_reason)
+#                     nemesis_info.status = NemesisStatus.SKIPPED
+#                 else:
+#                     nemesis_info.complete()
+#                 nemesis_info.duration = nemesis_info.end_time - nemesis_info.start_time
+#                 run.save()
+#             except Exception:  # pylint: disable=broad-except
+#                 nemesis.log.error("Error saving nemesis_info to Argus", exc_info=True)
+#
+#         def data_validation_prints(args):
+#             try:
+#                 if hasattr(args[0].tester, 'data_validator') and args[0].tester.data_validator:
+#                     with args[0].cluster.cql_connection_patient(
+#                             args[0].cluster.nodes[0], keyspace=args[0].tester.data_validator.keyspace_name) as session:
+#                         args[0].tester.data_validator.validate_range_not_expected_to_change(session,
+#                                                                                             during_nemesis=True)
+#                         args[0].tester.data_validator.validate_range_expected_to_change(session, during_nemesis=True)
+#                         args[0].tester.data_validator.validate_deleted_rows(session, during_nemesis=True)
+#             except Exception as err:  # pylint: disable=broad-except
+#                 args[0].log.debug(f'Data validator error: {err}')
+#
+#         @wraps(method)
+#         def wrapper(*args, **kwargs):  # pylint: disable=too-many-statements
+#             # pylint: disable=too-many-locals
+#             # pylint: disable=too-many-branches
+#             args[0].set_target_node()
+#             method_name = method.__name__
+#             args[0].current_disruption = "".join(p.capitalize() for p in method_name.replace("disrupt_", "").split("_"))
+#             args[0].cluster.check_cluster_health()
+#             num_nodes_before = len(args[0].cluster.nodes)
+#             start_time = time.time()
+#             args[0].log.debug('Start disruption at `%s`', datetime.datetime.fromtimestamp(start_time))
+#             class_name = args[0].get_class_name()
+#             if class_name.find('Chaos') < 0:
+#                 args[0].metrics_srv.event_start(class_name)
+#             result = None
+#             status = True
+#             # pylint: disable=protected-access
+#             args[0]._set_current_disruption(f"{args[0].current_disruption} {args[0].target_node}")
+#             args[0].set_current_running_nemesis(node=args[0].target_node)
+#             log_info = {
+#                 'operation': args[0].current_disruption,
+#                 'start': int(start_time),
+#                 'end': 0,
+#                 'duration': 0,
+#                 'node': str(args[0].target_node),
+#                 'subtype': 'end',
+#             }
+#             # TODO: Temporary print. Will be removed later
+#             data_validation_prints(args=args)
+#
+#             with DisruptionEvent(nemesis_name=args[0].get_disrupt_name() + f"_{id(args[0])}_w{id(self)}",
+#                                  node=args[0].target_node, publish_event=True) as nemesis_event:
+#                 nemesis_info = argus_create_nemesis_info(nemesis=args[0], class_name=class_name,
+#                                                          method_name=method_name, start_time=start_time)
+#                 try:
+#                     result = method(*args[1:], **kwargs)
+#                 except (UnsupportedNemesis, MethodVersionNotFound) as exp:
+#                     skip_reason = str(exp)
+#                     log_info.update({'subtype': 'skipped', 'skip_reason': skip_reason})
+#                     nemesis_event.skip(skip_reason=skip_reason)
+#                 except Exception as details:  # pylint: disable=broad-except
+#                     nemesis_event.add_error([str(details)])
+#                     nemesis_event.full_traceback = traceback.format_exc()
+#                     nemesis_event.severity = Severity.ERROR
+#                     args[0].error_list.append(str(details))
+#                     args[0].log.error('Unhandled exception in method %s', method, exc_info=True)
+#                     log_info.update({'error': str(details), 'full_traceback': traceback.format_exc()})
+#                     status = False
+#
+#             end_time = time.time()
+#             time_elapsed = int(end_time - start_time)
+#             log_info.update({
+#                 'end': int(end_time),
+#                 'duration': time_elapsed,
+#             })
+#             args[0].duration_list.append(time_elapsed)
+#             args[0].operation_log.append(copy.deepcopy(log_info))
+#             args[0].log.debug('%s duration -> %s s', args[0].current_disruption, time_elapsed)
+#
+#             if class_name.find('Chaos') < 0:
+#                 args[0].metrics_srv.event_stop(class_name)
+#             disrupt = args[0].get_disrupt_name()
+#             del log_info['operation']
+#
+#             try:  # So that the nemesis thread won't stop due to elasticsearch failure
+#                 args[0].update_stats(disrupt, status, log_info)
+#             except ElasticSearchConnectionTimeout as err:
+#                 args[0].log.warning(f"Connection timed out when attempting to update elasticsearch statistics:\n"
+#                                     f"{err}")
+#             except Exception as err:  # pylint: disable=broad-except
+#                 args[0].log.warning(f"Unexpected error when attempting to update elasticsearch statistics:\n"
+#                                     f"{err}")
+#             args[0].log.info(f"log_info: {log_info}")
+#             nemesis_event.duration = time_elapsed
+#             args[0].cluster.check_cluster_health()
+#             num_nodes_after = len(args[0].cluster.nodes)
+#             if num_nodes_before != num_nodes_after:
+#                 args[0].log.error('num nodes before %s and nodes after %s does not match' %
+#                                   (num_nodes_before, num_nodes_after))
+#             if nemesis_info:
+#                 argus_finalize_nemesis_info(nemesis=args[0], nemesis_info=nemesis_info, nemesis_event=nemesis_event)
+#             # TODO: Temporary print. Will be removed later
+#             data_validation_prints(args=args)
+#             return result
+#
+#         return wrapper
 
 
 class SslHotReloadingNemesis(Nemesis):
