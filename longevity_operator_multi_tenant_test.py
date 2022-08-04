@@ -24,6 +24,8 @@ from sdcm.utils.common import ParallelObject
 
 # pylint: disable=too-many-instance-attributes
 class ScyllaClusterStats(LongevityTest):
+    _testMethodName = "runTest"
+
     # pylint: disable=too-many-arguments,super-init-not-called
     def __init__(self, db_cluster, loaders, monitors, prometheus_db, params, test_config, cluster_index):
         self.db_cluster = db_cluster
@@ -31,22 +33,16 @@ class ScyllaClusterStats(LongevityTest):
         self.monitors = monitors
         self.prometheus_db = prometheus_db
         self.params = copy.deepcopy(params)
-        # self._es_doc_type = "test_stats"
-        # self._stats = self._init_stats()
-        self.log = logging.getLogger(self.__class__.__name__)
         self.test_config = test_config
         self._duration = self.params.get(key='test_duration')
+        self.log = logging.getLogger(self.__class__.__name__)
         self.create_stats = self.params.get(key='store_perf_results')
         self.status = "RUNNING"
         self.cluster_index = str(cluster_index)
         self._test_id = self.test_config.test_id() + f"--{cluster_index}"
         self._test_index = self.get_str_index()
-        # self.create_test_stats()
-        # self.start_time = self.get_test_start_time()
-
         self.start_time = time.time()
-        self.timeout_thread = self._init_test_timeout_thread()
-        self.test_config.reuse_cluster(False)
+        self._duration = self.params.get(key='test_duration')
 
     def get_str_index(self):
         return f"k8s-longevity-{self.db_cluster.k8s_cluster.tenants_number}-tenants"
@@ -63,10 +59,11 @@ class ScyllaClusterStats(LongevityTest):
 
 class LongevityOperatorMulitiTenantTest(LongevityTest):
     scylla_clusters_stats = []
-    test_type = "longevity"
+    _testMethodName = "runTest"
+    # test_type = "longevity"
 
-    def __init__(self, *args):
-        super().__init__(*args, start_events_device=True)
+    # def __init__(self, *args):
+    #     super().__init__(*args, start_events_device=True)
 
     def setUp(self):
         super().setUp()
@@ -93,13 +90,16 @@ class LongevityOperatorMulitiTenantTest(LongevityTest):
 
     def test_custom_time(self):
         def _run_test_on_one_tenant(scylla_cluster_stats):
-            self.log.info("Longevity test with parameters: %s", scylla_cluster_stats.params)
+            self.log.info("Longevity test for cluster %s with parameters: %s", scylla_cluster_stats.db_cluster,
+                          scylla_cluster_stats.params)
             scylla_cluster_stats.test_custom_time()
 
         self.log.info("Starting tests worker threads")
 
-        self.log.info("Clusters count: %s", len(self.db_clusters_multitenant))
+        self.log.info("Clusters count: %s", self.k8s_cluster.tenants_number)
         object_set = ParallelObject(
-            timeout=18000,
-            objects=[[scs] for scs in self.scylla_clusters_stats])
+            timeout=int(self.test_duration) * 60,
+            objects=[[scs] for scs in self.scylla_clusters_stats],
+            num_workers=self.k8s_cluster.tenants_number
+        )
         object_set.run(func=_run_test_on_one_tenant, unpack_objects=True, ignore_exceptions=False)

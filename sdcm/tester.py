@@ -346,9 +346,8 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
             self._init_ldap()
 
         # Cover multi-tenant configuration. Prevent event device double initiate
-        if kwargs.get("start_events_device", True):
-            start_events_device(log_dir=self.logdir,
-                                _registry=getattr(self, "_registry", None) or self.events_processes_registry)
+        start_events_device(log_dir=self.logdir,
+                            _registry=getattr(self, "_registry", None) or self.events_processes_registry)
 
         time.sleep(0.5)
         InfoEvent(message=f"TEST_START test_id={self.test_config.test_id()}").publish()
