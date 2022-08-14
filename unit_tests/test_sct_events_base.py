@@ -154,8 +154,10 @@ class TestSctEvent(SctEventTestCase):
         y.event_id = "fa4a84a2-968b-474c-b188-b3bac4be8527"
         self.assertEqual(
             y.to_json(),
-            f'{{"base": "Y", "type": null, "subtype": null, "event_timestamp": {y.event_timestamp}, "source_timestamp": null, '
-            f'"severity": "UNKNOWN", "event_id": "fa4a84a2-968b-474c-b188-b3bac4be8527", "log_level": 30}}'
+            f'{{"base": "Y", "type": null, "subtype": null, "event_timestamp": {y.event_timestamp}, '
+            f'"source_timestamp": null, '
+            f'"severity": "UNKNOWN", "event_id": "fa4a84a2-968b-474c-b188-b3bac4be8527", "log_level": 30, '
+            f'"subcontext": []}}'
         )
 
     def test_publish(self):
