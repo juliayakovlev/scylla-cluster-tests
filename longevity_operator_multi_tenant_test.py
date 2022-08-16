@@ -23,7 +23,15 @@ from sdcm.utils.common import ParallelObject
 
 
 # pylint: disable=too-many-instance-attributes
-class ScyllaClusterStats(LongevityTest):
+from sdcm.utils.operator.miltitenant_common import set_stress_command_to_tenant
+
+
+class MulitiTenantBase(LongevityTest):
+    _testMethodName = "runTest"
+
+
+class ScyllaClusterStats(MulitiTenantBase):
+
     # pylint: disable=too-many-arguments,super-init-not-called
     def __init__(self, db_cluster, loaders, monitors, prometheus_db, params, test_config, cluster_index):
         self.db_cluster = db_cluster
@@ -57,9 +65,8 @@ class ScyllaClusterStats(LongevityTest):
         return self.__str__()
 
 
-class LongevityOperatorMulitiTenantTest(LongevityTest):
+class LongevityOperatorMulitiTenantTest(MulitiTenantBase):
     scylla_clusters_stats = []
-    _testMethodName = "runTest"
 
     def setUp(self):
         super().setUp()
@@ -73,16 +80,14 @@ class LongevityOperatorMulitiTenantTest(LongevityTest):
                 test_config=self.test_config,
                 cluster_index=i + 1,
             ))
-            for stress_cmd_param in self.params.stress_cmd_params:
-                current_stress_cmd = self.params.get(stress_cmd_param)
-                if not isinstance(current_stress_cmd, list):
-                    continue
-                # NOTE: 'prepare_write_cmd' is allowed to be list of strs
-                if stress_cmd_param == 'prepare_write_cmd':
-                    if not all((isinstance(current_stress_cmd_element, list)
-                                for current_stress_cmd_element in current_stress_cmd)):
-                        continue
-                self.scylla_clusters_stats[i].params[stress_cmd_param] = current_stress_cmd[i]
+
+            current_stress_cmds = set_stress_command_to_tenant(params=self.params, tenant_number=i)
+            for stress_cmd_param, sctress_cmds in current_stress_cmds.items():
+                self.scylla_clusters_stats[i].params[stress_cmd_param] = current_stress_cmds[stress_cmd_param]
+
+            self.log.info("Updated stress_cmd: %s", self.scylla_clusters_stats[i].params["stress_cmd"])
+            self.log.info("Updated stress_read_cmd: %s", self.scylla_clusters_stats[i].params["stress_read_cmd"])
+            self.log.info("Updated prepare_write_cmd: %s", self.scylla_clusters_stats[i].params["prepare_write_cmd"])
 
     def test_custom_time(self):
         def _run_test_on_one_tenant(scylla_cluster_stats):

@@ -1,21 +1,21 @@
 test_duration: 300
 prepare_write_cmd:  [
-                     ["cassandra-stress write cl=QUORUM n=209715 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=80 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"],
-                     ["cassandra-stress write cl=QUORUM n=209715 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=80 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"]
+                     ["cassandra-stress write cl=QUORUM n=209715 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=90 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"],
+                     ["cassandra-stress write cl=QUORUM n=209715 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=70 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"]
                     ]
 
 stress_cmd: [
-             ["cassandra-stress write cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
-             "cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"
+             ["cassandra-stress write cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=50 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
+             "cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=30 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"
              ],
-             [ "cassandra-stress write cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
-               "cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"
+             [ "cassandra-stress write cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=60 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
+               "cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=20 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"
              ]
             ]
 
 stress_read_cmd: [
-                  ["cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"],
-                  ["cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=40 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"]
+                  ["cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=70 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"],
+                  ["cassandra-stress read  cl=QUORUM duration=150m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=10 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"]
                  ]
 
 # NOTE: we disable second type of monitoring - K8S based one. It is redundant while we use standalone ones.
