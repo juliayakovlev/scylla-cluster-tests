@@ -106,15 +106,15 @@ class SlaPerUserTest(LongevityTest):
             # End Temporary solution
 
             shards_time_per_sla = self.prometheus_stats.get_scylla_scheduler_runtime_ms(start_time, end_time, node_ip)
-            if not (shards_time_per_sla and scheduler_shares):
-                # Set this message as WARNING because I found that prometheus return empty answer despite the data
-                # exists (I run this request manually and got data). Prometheus request doesn't fail, it succeeded but
-                # empty, like:
-                # {'status': 'success', 'data': {'resultType': 'matrix', 'result': []}}
-                WorkloadPrioritisationEvent.EmptyPrometheusData(message=f'Failed to get scheduler_runtime data from '
-                                                                        f'Prometheus for node {node_ip}',
-                                                                severity=Severity.WARNING).publish()
-                continue
+            # if not (shards_time_per_sla and scheduler_shares):
+            #     # Set this message as WARNING because I found that prometheus return empty answer despite the data
+            #     # exists (I run this request manually and got data). Prometheus request doesn't fail, it succeeded but
+            #     # empty, like:
+            #     # {'status': 'success', 'data': {'resultType': 'matrix', 'result': []}}
+            #     WorkloadPrioritisationEvent.EmptyPrometheusData(message=f'Failed to get scheduler_runtime data from '
+            #                                                             f'Prometheus for node {node_ip}',
+            #                                                     severity=Severity.WARNING).publish()
+            #     continue
 
             runtime_per_user = {}
             for username, val in test_users_to_sg.items():
