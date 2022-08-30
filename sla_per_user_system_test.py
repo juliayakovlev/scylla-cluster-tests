@@ -96,7 +96,10 @@ class SlaPerUserTest(LongevityTest):
         # TODO: ask Eliran do we really need validate it by node?
         for node_ip in self.db_cluster.get_node_private_ips():
             # Temporary solution
-            scheduler_shares = self.prometheus_stats.get_scylla_scheduler_shares_per_sla(start_time, end_time, node_ip)
+            scheduler_shares = self.prometheus_stats.get_scylla_scheduler_shares_per_sla(start_time=start_time,
+                                                                                         end_time=end_time,
+                                                                                         node_ip=node_ip,
+                                                                                         scrap_metrics_step=60)
             self.log.debug('SCHEDULERS SHARES FROM PROMETHEUS: {}'.format(scheduler_shares))
             # this default scheduler that is not under test - ignore it
             if 'sl:default' in scheduler_shares:
@@ -107,7 +110,10 @@ class SlaPerUserTest(LongevityTest):
             self.log.debug('ROLE - SERVICE LEVEL - SCHEDULER: {}'.format(test_users_to_sg))
             # End Temporary solution
 
-            shards_time_per_sla = self.prometheus_stats.get_scylla_scheduler_runtime_ms(start_time, end_time, node_ip)
+            shards_time_per_sla = self.prometheus_stats.get_scylla_scheduler_runtime_ms(start_time=start_time,
+                                                                                        end_time=end_time,
+                                                                                        node_ip=node_ip,
+                                                                                        scrap_metrics_step=60)
             # TODO: follow after this issue (prometheus return empty answer despite the data exists),
             #  if it is reproduced
             # if not (shards_time_per_sla and scheduler_shares):
@@ -195,7 +201,7 @@ class SlaPerUserTest(LongevityTest):
             low_shares_metrics = low_shares_user['service_level'].shares
 
         if not high_shares_metrics or not low_shares_metrics:
-            return None
+            return 0
         return float(high_shares_metrics) / float(low_shares_metrics)
 
     def run_stress_and_verify_threads(self, params=None):

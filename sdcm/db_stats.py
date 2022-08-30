@@ -309,7 +309,7 @@ class PrometheusDBStats:
         else:
             return res
 
-    def get_scylla_scheduler_runtime_ms(self, start_time, end_time, node_ip):
+    def get_scylla_scheduler_runtime_ms(self, start_time, end_time, node_ip, scrap_metrics_step=None):
         """
         Get Scylla CPU scheduler runtime from PrometheusDB
 
@@ -320,14 +320,14 @@ class PrometheusDBStats:
         # the query is taken from the Grafana Dashborad definition
         query = 'avg(irate(scylla_scheduler_runtime_ms{group=~"sl:.*", instance="%s"}  [30s] )) ' \
             'by (group, instance)' % node_ip
-        results = self.query(query=query, start=start_time, end=end_time)
+        results = self.query(query=query, start=start_time, end=end_time, scrap_metrics_step=scrap_metrics_step)
         res = defaultdict(dict)
         for item in results:
             res[item['metric']['instance']].update({item['metric']['group']:
                                                     [float(runtime[1]) for runtime in item['values']]})
         return res
 
-    def get_scylla_scheduler_shares_per_sla(self, start_time, end_time, node_ip):  # pylint: disable=invalid-name
+    def get_scylla_scheduler_shares_per_sla(self, start_time, end_time, node_ip, scrap_metrics_step):  # pylint: disable=invalid-name
         """
         Get scylla_scheduler_shares from PrometheusDB
 
@@ -337,7 +337,7 @@ class PrometheusDBStats:
             return {}
         # the query is taken from the Grafana Dashborad definition
         query = 'avg(scylla_scheduler_shares{group=~"sl:.*", instance="%s"} ) by (group, instance)' % node_ip
-        results = self.query(query=query, start=start_time, end=end_time)
+        results = self.query(query=query, start=start_time, end=end_time, scrap_metrics_step=scrap_metrics_step)
         res = {}
         for item in results:
             res[item['metric']['group']] = {int(i[1]) for i in item['values']}
