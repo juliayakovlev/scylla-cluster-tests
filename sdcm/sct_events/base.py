@@ -197,7 +197,7 @@ class SctEvent:
 
     def concatenate_subcontext_for_message(self, context_name):
         s = []
-        for event_context in self.subcontext:
+        for event_context in self.subcontext or []:
             if isinstance(event_context, dict) and context_name in event_context:
                 s.append(event_context[context_name])
             elif isinstance(event_context, SctEvent) and context_name in event_context.subcontext_fmt:
@@ -217,8 +217,8 @@ class SctEvent:
         # pylint: disable=import-outside-toplevel; to avoid cyclic imports
         from sdcm.sct_events.continuous_event import ContinuousEventsRegistry
         # Add subcontext for event with ERROR and CRITICAL severity only
-        if self.severity.value < 3:
-            return
+        # if self.severity.value < 3:
+        #     return
 
         # Add nemesis info if event happened during nemesis
         if self.base != "DisruptionEvent":
