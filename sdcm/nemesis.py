@@ -97,6 +97,7 @@ from sdcm.wait import wait_for
 from test_lib.compaction import CompactionStrategy, get_compaction_strategy, get_compaction_random_additional_params, \
     get_gc_mode, GcMode
 from test_lib.cql_types import CQLTypeBuilder
+from test_lib.sla import Role
 
 LOGGER = logging.getLogger(__name__)
 
@@ -1524,6 +1525,47 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
 
         if self._is_it_on_kubernetes():
             self.refresh_nodes_ip_and_reconfigure_monitor(nodes=nodes)
+
+    def _start_stress_with_authentication(self, role: Role, keyspace: str, rows: int = 1000000,
+                                          strategy: str = 'SizeTieredCompactionStrategy', threads: int = 10):
+        cs_cmd = f"cassandra-stress write cl=QUORUM n={rows} -schema 'replication(factor=3) keyspace={keyspace} " \
+                 f"compaction(strategy={strategy})' -mode cql3 native " \
+                 f"user={role.name} password={role.password} -rate threads={threads} " \
+                 f"-pop seq=1..{rows} -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"
+        self.log.info("Start cassandra-stress load: %s", cs_cmd)
+        return self.tester.run_stress_thread(stress_cmd=cs_cmd, round_robin=True, stop_test_on_failure=False)
+
+    def disrupt_remove_service_level_while_load(self):
+        if not getattr(self.tester, "sla_test", None):
+            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+
+        try:
+            self.log.info("Create service level and role for test")
+            with self.cluster.cql_connection_patient(node=self.cluster.nodes[0], user=self.tester.DEFAULT_USER,
+                                                     password=self.tester.DEFAULT_USER_PASSWORD) as session:
+                role = self.tester.create_sla_auth(session=session, shares=random.randint(0, 999),
+                                                   index=random.randint(0, 100))
+
+            self.log.info("Created role %s with attached service level %s (shards %s)", role.name,
+                          role.attached_service_level.name, role.attached_service_level.shares)
+
+            cs_thread = self._start_stress_with_authentication(role=role, keyspace='remove_sl')
+
+            # Wait for 3 minutes, let load runs
+            time.sleep(180)
+
+            self.log.info("Drop service level %s", role.attached_service_level.name)
+            role.attached_service_level.drop(if_exists=False)
+            assert not role.created, f"Role {role.name} was not dropped"
+
+            self.tester.verify_stress_thread(cs_thread_pool=cs_thread)
+        except Exception as exc:  # pylint: disable=try-except-raise
+            self.log.error("Failure: %s", exc)
+            raise
+
+        finally:
+            with self.cluster.cql_connection_patient(self.target_node) as session:
+                session.execute('DROP KEYSPACE IF EXISTS remove_sl')
 
     def refresh_nodes_ip_and_reconfigure_monitor(self, nodes: list = None):
         # relevant for kubernetes
@@ -3921,6 +3963,15 @@ class RefreshBigMonkey(Nemesis):
 
     def disrupt(self):
         self.disrupt_nodetool_refresh(big_sstable=True)
+
+
+class RemoveServiceLevelMonkey(Nemesis):
+    disruptive = True
+    kubernetes = True
+    limited = True
+
+    def disrupt(self):
+        self.disrupt_remove_service_level_while_load()
 
 
 class EnospcMonkey(Nemesis):
