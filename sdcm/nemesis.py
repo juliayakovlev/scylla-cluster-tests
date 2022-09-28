@@ -97,7 +97,7 @@ from sdcm.wait import wait_for
 from test_lib.compaction import CompactionStrategy, get_compaction_strategy, get_compaction_random_additional_params, \
     get_gc_mode, GcMode
 from test_lib.cql_types import CQLTypeBuilder
-from test_lib.sla import Role
+from test_lib.sla import Role, ServiceLevel
 
 LOGGER = logging.getLogger(__name__)
 
@@ -1526,7 +1526,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if self._is_it_on_kubernetes():
             self.refresh_nodes_ip_and_reconfigure_monitor(nodes=nodes)
 
-    def _start_stress_with_authentication(self, role: Role, keyspace: str, rows: int = 1000000,
+    def _start_stress_with_authentication(self, role: Role, keyspace: str, rows: int = 2000000,
                                           strategy: str = 'SizeTieredCompactionStrategy', threads: int = 10):
         cs_cmd = f"cassandra-stress write cl=QUORUM n={rows} -schema 'replication(factor=3) keyspace={keyspace} " \
                  f"compaction(strategy={strategy})' -mode cql3 native " \
@@ -1598,6 +1598,47 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             raise
 
         finally:
+            with self.cluster.cql_connection_patient(self.target_node) as session:
+                session.execute(f'DROP KEYSPACE IF EXISTS {keyspace}')
+
+    def disrupt_change_role_definition_while_load(self):
+        if not getattr(self.tester, "sla_test", None):
+            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+
+        keyspace = 'change_role'
+        try:
+            self.log.info("Create service level and role for test")
+            with self.cluster.cql_connection_patient(node=self.cluster.nodes[0], user=self.tester.DEFAULT_USER,
+                                                     password=self.tester.DEFAULT_USER_PASSWORD) as session:
+                role = self.tester.create_sla_auth(session=session, shares=random.randint(0, 999),
+                                                   index=random.randint(0, 100))
+
+                self.log.info("Created role %s with attached service level %s (shards %s)", role.name,
+                              role.attached_service_level.name, role.attached_service_level.shares)
+
+                cs_thread = self._start_stress_with_authentication(role=role, keyspace=keyspace)
+
+                # Wait for 3 minutes, let load runs
+                time.sleep(180)
+
+                self.log.info("Detach service level %s from role %s", role.attached_service_level_name, role.name)
+                role.detach_service_level()
+                self.log.info("Detached")
+                time.sleep(120)
+                new_shares = random.randint(0, 999)
+                self.log.info("Attach new service level to role %s", role.name)
+                role.attach_service_level(
+                    ServiceLevel(session=session,
+                                 name=self.tester.SERVICE_LEVEL_NAME_TEMPLATE % (new_shares, random.randint(0, 100)),
+                                 shares=new_shares).create())
+                self.log.info("Attached service level %s to role %s", role.attached_service_level_name, role.name)
+
+        except Exception as exc:  # pylint: disable=try-except-raise
+            self.log.error("Failure: %s", exc)
+            raise
+
+        finally:
+            self.tester.verify_stress_thread(cs_thread_pool=cs_thread)
             with self.cluster.cql_connection_patient(self.target_node) as session:
                 session.execute(f'DROP KEYSPACE IF EXISTS {keyspace}')
 
@@ -4006,6 +4047,15 @@ class RemoveServiceLevelMonkey(Nemesis):
 
     def disrupt(self):
         self.disrupt_remove_service_level_while_load()
+
+
+class ChangeRoleDefinitionMonkey(Nemesis):
+    disruptive = True
+    kubernetes = True
+    limited = True
+
+    def disrupt(self):
+        self.disrupt_change_role_definition_while_load()
 
 
 class EnospcMonkey(Nemesis):

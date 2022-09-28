@@ -10,14 +10,14 @@ stress_cmd: ["cassandra-stress read cl=QUORUM duration=40m -schema 'replication(
 
 n_db_nodes: 3
 n_loaders: 1
-n_monitor_nodes: 0
+n_monitor_nodes: 1
 #seeds_num: 3
 round_robin: true
 
 instance_type_db: 'i3.2xlarge'
 
 #run_fullscan: '{"ks_cf": "keyspace1.standard1", "interval": 5}' # 'ks.cf|random, interval(min)'
-nemesis_class_name: 'RemoveServiceLevelMonkey'
+nemesis_class_name: 'ChangeRoleDefinitionMonkey'
 nemesis_seed: '032'
 nemesis_interval: 5
 #nemesis_filter_seeds: false
