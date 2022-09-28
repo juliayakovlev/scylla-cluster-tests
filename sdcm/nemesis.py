@@ -1526,7 +1526,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if self._is_it_on_kubernetes():
             self.refresh_nodes_ip_and_reconfigure_monitor(nodes=nodes)
 
-    def _start_stress_with_authentication(self, role: Role, keyspace: str, rows: int = 1000000,
+    def _start_stress_with_authentication(self, role: Role, keyspace: str, rows: int = 2000000,
                                           strategy: str = 'SizeTieredCompactionStrategy', threads: int = 10):
         cs_cmd = f"cassandra-stress write cl=QUORUM n={rows} -schema 'replication(factor=3) keyspace={keyspace} " \
                  f"compaction(strategy={strategy})' -mode cql3 native " \
@@ -1539,6 +1539,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not getattr(self.tester, "sla_test", None):
             raise UnsupportedNemesis('This nemesis is supported for SLA test only')
 
+        keyspace = 'remove_sl'
         try:
             self.log.info("Create service level and role for test")
             with self.cluster.cql_connection_patient(node=self.cluster.nodes[0], user=self.tester.DEFAULT_USER,
@@ -1546,26 +1547,59 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 role = self.tester.create_sla_auth(session=session, shares=random.randint(0, 999),
                                                    index=random.randint(0, 100))
 
-            self.log.info("Created role %s with attached service level %s (shards %s)", role.name,
-                          role.attached_service_level.name, role.attached_service_level.shares)
+                self.log.info("Created role %s with attached service level %s (shards %s)", role.name,
+                              role.attached_service_level.name, role.attached_service_level.shares)
 
-            cs_thread = self._start_stress_with_authentication(role=role, keyspace='remove_sl')
+                cs_thread = self._start_stress_with_authentication(role=role, keyspace=keyspace)
 
-            # Wait for 3 minutes, let load runs
-            time.sleep(180)
+                # Wait for 3 minutes, let load runs
+                time.sleep(180)
 
-            self.log.info("Drop service level %s", role.attached_service_level.name)
-            role.attached_service_level.drop(if_exists=False)
-            assert not role.created, f"Role {role.name} was not dropped"
+                self.log.info("Drop service level %s", role.attached_service_level.name)
+                role.attached_service_level.drop(if_exists=False)
+                assert not role.created, f"Role {role.name} was not dropped"
 
-            self.tester.verify_stress_thread(cs_thread_pool=cs_thread)
         except Exception as exc:  # pylint: disable=try-except-raise
             self.log.error("Failure: %s", exc)
             raise
 
         finally:
+            self.tester.verify_stress_thread(cs_thread_pool=cs_thread)
             with self.cluster.cql_connection_patient(self.target_node) as session:
-                session.execute('DROP KEYSPACE IF EXISTS remove_sl')
+                session.execute(f'DROP KEYSPACE IF EXISTS {keyspace}')
+
+    def disrupt_remove_role_while_load(self):
+        if not getattr(self.tester, "sla_test", None):
+            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+
+        keyspace = 'remove_role'
+        try:
+            self.log.info("Create service level and role for test")
+            with self.cluster.cql_connection_patient(node=self.cluster.nodes[0], user=self.tester.DEFAULT_USER,
+                                                     password=self.tester.DEFAULT_USER_PASSWORD) as session:
+                role = self.tester.create_sla_auth(session=session, shares=random.randint(0, 999),
+                                                   index=random.randint(0, 100))
+
+                self.log.info("Created role %s with attached service level %s (shards %s)", role.name,
+                              role.attached_service_level.name, role.attached_service_level.shares)
+
+                cs_thread = self._start_stress_with_authentication(role=role, keyspace=keyspace)
+
+                # Wait for 3 minutes, let load runs
+                time.sleep(180)
+
+                self.log.info("Drop role %s", role.name)
+                role.drop(if_exists=False)
+                self.log.info("Role %s has been dropped", role.name)
+
+        except Exception as exc:  # pylint: disable=try-except-raise
+            self.log.error("Failure: %s", exc)
+            raise
+
+        finally:
+            self.tester.verify_stress_thread(cs_thread_pool=cs_thread)
+            with self.cluster.cql_connection_patient(self.target_node) as session:
+                session.execute(f'DROP KEYSPACE IF EXISTS {keyspace}')
 
     def refresh_nodes_ip_and_reconfigure_monitor(self, nodes: list = None):
         # relevant for kubernetes
@@ -3972,6 +4006,15 @@ class RemoveServiceLevelMonkey(Nemesis):
 
     def disrupt(self):
         self.disrupt_remove_service_level_while_load()
+
+
+class RemoveRoleMonkey(Nemesis):
+    disruptive = True
+    kubernetes = True
+    limited = True
+
+    def disrupt(self):
+        self.disrupt_remove_role_while_load()
 
 
 class EnospcMonkey(Nemesis):
