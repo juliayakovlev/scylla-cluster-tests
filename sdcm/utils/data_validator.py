@@ -221,7 +221,7 @@ class LongevityDataValidator:
             mvs_names = self.get_view_name_from_profile(self.SUFFIX_FOR_VIEW_AFTER_UPDATE, all_entries=True)
             self._mvs_for_updated_data = [view_name.replace(self.SUFFIX_FOR_VIEW_AFTER_UPDATE, '')
                                           for view_name in mvs_names]
-        return self._mvs_for_updated_data
+        return list(dict.fromkeys(self._mvs_for_updated_data))
 
     @property
     def view_names_after_updated_data(self):
