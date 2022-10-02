@@ -1,4 +1,4 @@
-test_duration: 300
+test_duration: 60
 prepare_write_cmd:  [
     "cassandra-stress write cl=QUORUM n=5485760 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=80 -pop seq=1..5485760 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
     "cassandra-stress write cl=QUORUM n=5485760 -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native -rate threads=80 -pop seq=5485761..10971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5",
@@ -24,8 +24,8 @@ n_monitor_nodes: 1
 n_loaders: 4
 k8s_n_loader_pods_per_cluster: 2
 
-nemesis_class_name: ['SisyphusMonkey', 'SisyphusMonkey']
-nemesis_interval: [5, 6]
+nemesis_class_name: ['SisyphusMonkey', 'StartStopMajorCompaction']
+nemesis_interval: [5, 10]
 nemesis_seed: ['385', '543']
 space_node_threshold: [64424, 64423]
 
