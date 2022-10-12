@@ -9,7 +9,7 @@ import pytest
 from sdcm.sct_events import Severity
 from sdcm.sct_events.continuous_event import ContinuousEventsRegistry, ContinuousEventRegistryException
 from sdcm.sct_events.database import get_pattern_to_event_to_func_mapping, CompactionEvent, \
-    IndexSpecialColumnErrorEvent, ScyllaServerStatusEvent
+    IndexSpecialColumnErrorEvent, ScyllaServerStatusEvent, DatabaseLogEvent
 from sdcm.sct_events.loaders import GeminiStressEvent
 from sdcm.sct_events.nemesis import DisruptionEvent
 from sdcm.sct_events.nodetool import NodetoolEvent
@@ -70,6 +70,10 @@ class TestContinuousEventsRegistry:
         DisruptionEvent(node=uuid.uuid1(), nemesis_name="test2", publish_event=False).begin_event()
         NodetoolEvent(node=uuid.uuid1(), nodetool_command="mock cmd", publish_event=False).begin_event()
         GeminiStressEvent(node=uuid.uuid1(), cmd="gemini hello", publish_event=False).begin_event()
+        event1 = DatabaseLogEvent.SEGMENTATION()
+        assert event1.msgfmt == ('({0.base} {0.severity}) period_type={0.period_type} event_id={0.event_id} '
+                                 'during_nemesis=test1,test2: type={0.type} regex={0.regex} '
+                                 'line_number={0.line_number}')
 
         event = ScyllaServerStatusEvent(node=str(uuid.uuid1()), severity=Severity.ERROR).begin_event(publish=False)
         # begin event - 2 running nemeses

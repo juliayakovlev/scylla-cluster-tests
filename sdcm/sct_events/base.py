@@ -217,17 +217,22 @@ class SctEvent:
         # pylint: disable=import-outside-toplevel; to avoid cyclic imports
         from sdcm.sct_events.continuous_event import ContinuousEventsRegistry
         # Add subcontext for event with ERROR and CRITICAL severity only
+        LOGGER.debug("add_subcontext me.\nbase: %s\nseverity: %s\nname: %s\nValue: %s", self.base, self.severity,
+                     self.severity.name, self.severity.value)
         if self.severity.value < 3:
             return
 
         # Add nemesis info if event happened during nemesis
         if self.base != "DisruptionEvent":
             running_disruption_events = ContinuousEventsRegistry().find_running_disruption_events()
+            LOGGER.debug("running_disruption_events: %s", running_disruption_events)
             if not running_disruption_events:
                 return
 
             for nemesis in running_disruption_events:
+                LOGGER.debug("nemesis append: %s", nemesis)
                 self.subcontext.append(nemesis)
+            LOGGER.debug("self.subcontext: %s", self.subcontext)
 
     def publish(self, warn_not_ready: bool = True) -> None:
         # pylint: disable=import-outside-toplevel; to avoid cyclic imports
@@ -317,6 +322,8 @@ class InformationalEvent(SctEvent, abstract=True):
     def __init__(self, severity: Severity = Severity.UNKNOWN):
         super().__init__(severity=severity)
         self.period_type = EventPeriod.INFORMATIONAL.value
+        LOGGER.debug("Print me.\nbase: %s\nseverity: %s\nname: %s\nValue: %s", self.base, self.severity,
+                     self.severity.name, self.severity.value)
         self.add_subcontext()
 
 
