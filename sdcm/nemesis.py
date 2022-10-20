@@ -30,6 +30,7 @@ from collections import defaultdict, Counter, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps, partial
 from threading import Lock
+from multiprocessing import Event
 from typing import List, Optional, Type, Callable, Tuple, Dict, Set, Union
 from types import MethodType  # pylint: disable=no-name-in-module
 
@@ -74,7 +75,7 @@ from sdcm.sct_events.group_common_events import (ignore_alternator_client_errors
                                                  ignore_ycsb_connection_refused, decorate_with_context)
 from sdcm.sct_events.loaders import CassandraStressLogEvent
 from sdcm.sct_events.nemesis import DisruptionEvent
-from sdcm.sct_events.system import InfoEvent
+from sdcm.sct_events.system import InfoEvent, TestFrameworkEvent
 from sdcm.utils import cdc
 from sdcm.utils.common import (get_db_tables, generate_random_string,
                                update_certificates, reach_enospc_on_node, clean_enospc_on_node,
@@ -1144,14 +1145,245 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.cluster.terminate_node(node)
         self.monitoring_set.reconfigure_scylla_monitoring()
 
-    def disrupt_nodetool_decommission(self, add_node=True, disruption_name=None):
+    def disrupt_unpaired_system_auth_with_decommission(self):
+        def search_for_staging_files():
+            while True:
+                found = False
+                for node in new_nodes:
+                    node.remoter.sudo('ls /var/lib/scylla/data/keyspace1/standard1*/staging/')
+                    result = node.remoter.sudo('ls /var/lib/scylla/data/keyspace1/standard1*/staging/ | wc -l').stdout
+                    try:
+                        if int(result) > 3:
+                            self.log.error("Staging files have been found on the node %s", node.name)
+                            found = True
+                            break
+                    except Exception as e:
+                        self.log.error("search_for_staging_files error: %s; result: %s", e, result)
+                if found or event.is_set():
+                    break
+
+        def run_decommission():
+            self.disrupt_nodetool_decommission(add_node=True, disruption_name="Issue2420")
+            event.set()
+
+        event = Event()
+        new_nodes = []
+        for _ in range(2):
+            new_nodes.append(self._add_and_init_new_cluster_node(rack=self.target_node.rack))
+
+        with self.cluster.cql_connection_patient(self.target_node) as session:
+            session.execute("ALTER KEYSPACE system_distributed WITH replication = {'class': 'NetworkTopologyStrategy', "
+                            "'replication_factor' : 3}")
+
+        keyspace = "keyspace1"
+        self.target_node.run_nodetool(sub_cmd='cleanup', args=keyspace)
+        # self.target_node.run_nodetool(sub_cmd='repair', args=keyspace)
+
+        # self.disrupt_nodetool_decommission(add_node=True, disruption_name="Issue2420")
+
+        ParallelObject(objects=[run_decommission, search_for_staging_files], timeout=1200).call_objects()
+
+        with self.cluster.cql_connection_patient(self.target_node) as session:
+            session.execute("ALTER KEYSPACE system_distributed WITH replication = {'class': 'SimpleStrategy', "
+                            "'replication_factor' : 1}")
+
+    def disrupt_double_mv_update_while_decommission(self):
+        def search_for_staging_files():
+            while True:
+                found = False
+                for node in self.cluster.nodes:
+                    # TODO: add function to node
+                    # node.remoter.sudo('ls /var/lib/scylla/data/keyspace1/standard1*/staging/')
+                    result = node.remoter.sudo('ls /var/lib/scylla/data/keyspace1/standard1*/staging/ | wc -l').stdout
+                    try:
+                        if int(result) > 3:
+                            # TODO: add example of empty and full output
+                            self.log.error("Staging files have been found on the node %s", node.name)
+                            found = True
+                            break
+                    except Exception as e:
+                        # TODO: convert to error event
+                        self.log.error("search_for_staging_files error: %s; result: %s", e, result)
+                if found or event.is_set():
+                    break
+
+        # def wait_for_view_built():
+        #     self.log.debug("Start waiting for view built")
+        #     self.tester._wait_for_view(scylla_cluster=self.cluster, session=session, key_space="keyspace1",
+        #                                view="standard1_by_c0")
+        #     self.log.debug("Finish waiting for view built - view has been built")
+
+        def run_decommission_no_new_node():
+            self.log.debug("Start node %s decommission, host_id is %s",
+                           self.target_node.name, decommission_node_hostid)
+            self.cluster.decommission(self.target_node)
+            # self._nodetool_decommission(add_node=False, disruption_name="Issue2420")
+            self.log.debug("Finish node %s decommission, host_id is %s",
+                           self.target_node.name, decommission_node_hostid)
+            event.set()
+
+        def run_decommission():
+            self.log.debug("Start node %s decommission, host_id is %s",
+                           self.target_node.name, self.target_node.host_id)
+            self._nodetool_decommission(add_node=True, disruption_name="Issue2420")
+            self.log.debug("Finish node %s decommission, host_id is %s",
+                           self.target_node.name, decommission_node_hostid)
+            event.set()
+
+        def wait_for_view_built():
+            self.log.debug("Start waiting for view built")
+            # with self.cluster.cql_connection_patient(original_target_node) as session_o:
+            while True:
+                query = ("select host_id from system_distributed.view_build_status "
+                         "where keyspace_name = 'keyspace1' and view_name = 'standard1_by_c0'"
+                         " and status = 'STARTED' ALLOW FILTERING")
+                view_build_status_rows = self.tester.rows_to_list(session.execute(query))
+                self.log.debug("sdcm/nemesis.py:wait_for_view_built view_build_status_rows: %s", view_build_status_rows)
+
+                # if not [host for host in view_build_status_rows if host != decommission_node_hostid] and event.is_set():
+                if not [host for host in view_build_status_rows if host[0] != decommission_node_hostid]:
+                    break
+
+            # self.log.debug("Finish waiting for view built - view has been built")
+            InfoEvent("Finish keyspace1.standard1_by_c0 view creation - view has been built").publish()
+
+        def wait_for_nodes_in_status(search_for_status: str):
+            query = ("select cast(host_id as text) as host_id from system_distributed.view_build_status "
+                     f"where keyspace_name = 'keyspace1' and view_name = 'standard1_by_c0'"
+                     f" and status = '{search_for_status}' ALLOW FILTERING")
+            self.log.debug(f"wait_for_nodes_in_status query: {query}")
+            view_build_status_rows = self.tester.rows_to_list(session.execute(query))
+            self.log.debug("Rows in view_build_status (wait_for_nodes_in_status): %s", view_build_status_rows)
+            # view_build_status_rows = []
+            # while remain_nodes_in_status > nodes_in_status:
+            #     with self.cluster.cql_connection_patient(self.cluster.nodes[0]) as session1:
+            #         view_build_status_rows = self.tester.rows_to_list(session1.execute(query))
+            #         self.log.debug("Rows in view_build_status rows: %s", view_build_status_rows)
+            #         remain_nodes_in_status = len(view_build_status_rows)
+            return [host_id[0] for host_id in view_build_status_rows if host_id[0] != original_target_node.host_id]
+
+        def view_build_status_content(search_for_status: str = "", host_id: str = ""):
+            add_host = f" and host_id = {host_id}" if host_id else ""
+            add_status = f" and status = '{search_for_status}'" if search_for_status else ""
+            allow_filtering = " ALLOW FILTERING" if host_id or search_for_status else ""
+            query = ("select host_id from system_distributed.view_build_status "
+                     f"where keyspace_name = 'keyspace1' and view_name = 'standard1_by_c0'"
+                     f"{add_host}{add_status}{allow_filtering}")
+            self.log.debug(f"view_build_status query: {query}")
+
+            found = []
+            for node in self.cluster.nodes:
+                # node.get_nodes_status()
+                # # TODO: add function to node?
+                # if node.status != 'UP':
+                #     continue
+
+                try:
+                    with self.cluster.cql_connection_patient(node) as session1:
+                        view_build_status_rows = self.tester.rows_to_list(session1.execute(query))
+                        self.log.debug("Rows in view_build_status rows: %s", view_build_status_rows)
+                        if view_build_status_rows:
+                            found.append(view_build_status_rows)
+                except Exception as exc:
+                    self.log.error("Failed to check view_build_status, error: %s", exc)
+
+            return found
+
+        try:
+            original_target_node = self.target_node
+            event = Event()
+
+            with self.cluster.cql_connection_patient(self.target_node) as session:
+                # while self.target_node == original_target_node:
+                #     self.set_target_node()
+
+                InfoEvent("Start keyspace1.standard1_by_c1 view creation").publish()
+                session.execute('CREATE MATERIALIZED VIEW keyspace1.standard1_by_c1 AS SELECT * FROM keyspace1.standard1 '
+                                'WHERE "C0" IS NOT NULL and key IS NOT NULL PRIMARY KEY ("C0", key)')
+                self.tester._wait_for_view_build_start(session=session, key_space="keyspace1",  view="standard1_by_c1",
+                                                       seconds_to_wait=60)
+                self.tester._wait_for_view(scylla_cluster=self.cluster, session=session, key_space="keyspace1",
+                                           view="standard1_by_c1")
+                InfoEvent("Finish keyspace1.standard1_by_c1 view creation - view has been built").publish()
+
+                InfoEvent("Start keyspace1.standard1_by_c0 view creation").publish()
+                session.execute('CREATE MATERIALIZED VIEW keyspace1.standard1_by_c0 AS SELECT * FROM keyspace1.standard1 '
+                                'WHERE "C0" IS NOT NULL and key IS NOT NULL PRIMARY KEY ("C0", key)')
+                self.tester._wait_for_view_build_start(session=session, key_space="keyspace1",  view="standard1_by_c0",
+                                                       seconds_to_wait=60)
+
+                time.sleep(300)
+                view_build_status = wait_for_nodes_in_status(search_for_status="STARTED")
+                if not view_build_status:
+                    TestFrameworkEvent(source=self.__class__.__name__,
+                                       message="View keyspace1.standard1_by_c0 is built. Test can't be performed").publish()
+
+                decommission_node_hostid = view_build_status[0]
+                self.log.debug("decommission_node_hostid is %s, type: %s", decommission_node_hostid,
+                               type(decommission_node_hostid))
+                self.log.debug("view_build_status is %s", view_build_status)
+                target_node = []
+                for node in self.cluster.nodes:
+                    self.log.debug("node.host_id is %s, type: %s", node.host_id, type(node.host_id))
+                    if node.host_id == decommission_node_hostid:
+                        target_node.append(node)
+                # target_node = [node for node in self.cluster.nodes if node.host_id == decommission_node_hostid]
+                if not target_node:
+                    raise RuntimeError(f"failed to get target node. "
+                                       f"view_build_status: {view_build_status}")
+                self.target_node = target_node[0]
+
+                self.set_current_running_nemesis(node=self.target_node)
+                target_is_seed = self.target_node.is_seed
+                ParallelObject(objects=[run_decommission_no_new_node, wait_for_view_built],
+                               timeout=43200).call_objects()
+
+            self.target_node = original_target_node
+            self.set_current_running_nemesis(node=self.target_node)
+
+            if rows_with_started_status := view_build_status_content(search_for_status="STARTED",
+                                                                     host_id=decommission_node_hostid):
+                # TODO: add check of Scylla version - is it include the fix or not and change the message accordingly
+                self.log.info("system_distributed.view_build_status still contains entries for previously decommissioned "
+                              "node: %s. Issue https://github.com/scylladb/scylla-enterprise/issues/2420",
+                              rows_with_started_status)
+            else:
+                self.log.info("system_distributed.view_build_status does not contain entries for previously decommissioned "
+                              "node. It's expected")
+                new_node = self._add_and_init_new_cluster_node(rack=self.target_node.rack)
+                # after decomission and add_node, the left nodes have data that isn't part of their tokens anymore.
+                # In order to eliminate cases that we miss a "data loss" bug because of it, we cleanup this data.
+                # This fix important when just user profile is run in the test and "keyspace1" doesn't exist.
+                if new_node.is_seed != target_is_seed:
+                    new_node.set_seed_flag(target_is_seed)
+                    self.cluster.update_seed_provider()
+                try:
+                    test_keyspaces = self.cluster.get_test_keyspaces()
+                    for node in self.cluster.nodes:
+                        for keyspace in test_keyspaces:
+                            node.run_nodetool(sub_cmd='cleanup', args=keyspace)
+                finally:
+                    self.unset_current_running_nemesis(new_node)
+
+            while self.target_node == original_target_node:
+                self.set_target_node()
+
+            event.clear()
+
+            ParallelObject(objects=[run_decommission, search_for_staging_files], timeout=7200).call_objects()
+        except Exception:
+            raise
+        finally:
+            TestFrameworkEvent(source=self.__class__.__name__, message="stop test",
+                               severity=Severity.CRITICAL).publish()
+
+    def _nodetool_decommission(self, add_node=True, disruption_name=None):
         if self._is_it_on_kubernetes() and disruption_name is None:
             self.set_target_node(allow_only_last_node_in_rack=True)
         target_is_seed = self.target_node.is_seed
         self.cluster.decommission(self.target_node)
         new_node = None
         if add_node:
-            # When adding node after decommission the node is declared as up only after it completed bootstrapping,
             # increasing the timeout for now
             new_node = self._add_and_init_new_cluster_node(rack=self.target_node.rack)
             # after decomission and add_node, the left nodes have data that isn't part of their tokens anymore.
@@ -1168,6 +1400,30 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             finally:
                 self.unset_current_running_nemesis(new_node)
         return new_node
+
+    def disrupt_nodetool_decommission(self, add_node=True, disruption_name=None):
+        return self._nodetool_decommission(add_node=add_node, disruption_name=disruption_name)
+        # if self._is_it_on_kubernetes() and disruption_name is None:
+        #     self.set_target_node(allow_only_last_node_in_rack=True)
+        # target_is_seed = self.target_node.is_seed
+        # self.cluster.decommission(self.target_node)
+        # if add_node:
+        #     # increasing the timeout for now
+        #     new_node = self._add_and_init_new_cluster_node(rack=self.target_node.rack)
+        #     # after decomission and add_node, the left nodes have data that isn't part of their tokens anymore.
+        #     # In order to eliminate cases that we miss a "data loss" bug because of it, we cleanup this data.
+        #     # This fix important when just user profile is run in the test and "keyspace1" doesn't exist.
+        #     if new_node.is_seed != target_is_seed:
+        #         new_node.set_seed_flag(target_is_seed)
+        #         self.cluster.update_seed_provider()
+        #     try:
+        #         test_keyspaces = self.cluster.get_test_keyspaces()
+        #         for node in self.cluster.nodes:
+        #             for keyspace in test_keyspaces:
+        #                 node.run_nodetool(sub_cmd='cleanup', args=keyspace)
+        #     finally:
+        #         self.unset_current_running_nemesis(new_node)
+        # return new_node
 
     def disrupt_nodetool_seed_decommission(self, add_node=True):
         if len(self.cluster.seed_nodes) < 2:
@@ -3918,6 +4174,24 @@ class CorruptThenRebuildMonkey(Nemesis):
 
     def disrupt(self):
         self.disrupt_destroy_data_then_rebuild()
+
+
+class UnpairedSystemAuthWithDecommissionMonkey(Nemesis):
+    disruptive = True
+    limited = True
+    topology_changes = True
+
+    def disrupt(self):
+        self.disrupt_unpaired_system_auth_with_decommission()
+
+
+class DoubleMvUpdateWhilehDecommissionMonkey(Nemesis):
+    disruptive = True
+    limited = True
+    topology_changes = True
+
+    def disrupt(self):
+        self.disrupt_double_mv_update_while_decommission()
 
 
 class DecommissionMonkey(Nemesis):

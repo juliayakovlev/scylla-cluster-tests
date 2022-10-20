@@ -2202,11 +2202,11 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
             self.log.debug('View build status result: {}'.format(result))
             return len([status for status in result if status[0] == 'SUCCESS']) >= live_nodes_amount
 
-        attempts = 20
+        attempts = 20000
         nodes_status = scylla_cluster.get_nodetool_status()
         live_nodes_amount = 0
-        for dc in nodes_status.itervalues():
-            for ip in dc.itervalues():
+        for dc in nodes_status.values():
+            for ip in dc.values():
                 if ip['state'] == 'UN':
                     live_nodes_amount += 1
 
@@ -2221,13 +2221,15 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
     def _wait_for_view_build_start(self, session, key_space, view, seconds_to_wait=20):
 
         def _check_build_started():
+            result = session.execute("SELECT * FROM system.views_builds_in_progress "
+                                     f"WHERE keyspace_name='{key_space}' AND view_name='{view}'")
+            self.log.info("_check_build_started result: %s", self.rows_to_list(result))
             result = self.rows_to_list(session.execute("SELECT last_token FROM system.views_builds_in_progress "
-                                                       "WHERE keyspace_name='{0}' AND view_name='{1}'".format(key_space,
-                                                                                                              view)))
-            self.log.debug('View build in progress: {}'.format(result))
+                                                       f"WHERE keyspace_name='{key_space}' AND view_name='{view}'"))
+            self.log.info('View build in progress: {}'.format(result))
             return result != []
 
-        self.log.debug("Ensure view building started.")
+        self.log.info("Ensure view building started.")
         start = time.time()
         while not _check_build_started():
             if time.time() - start > seconds_to_wait:

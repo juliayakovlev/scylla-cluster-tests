@@ -13,3 +13,6 @@ queries:
   read1:
     cql: select * from keyspace1.standard1_by_c0 where key = ? and "C0" = ? LIMIT 10
     fields: samerow
+  read2:
+    cql: select * from keyspace1.standard1 where key = ? LIMIT 10
+    fields: samerow
