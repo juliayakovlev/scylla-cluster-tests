@@ -398,7 +398,7 @@ def get_pattern_to_event_to_func_mapping(node: str) \
     target of the start / stop action, or creating a new one.
     """
     mapping = []
-    event_registry = ContinuousEventsRegistry()
+    # event_registry = ContinuousEventsRegistry()
 
     def _add_event(event_type: Type[ScyllaDatabaseContinuousEvent], match: Match):
         kwargs = match.groupdict()
@@ -409,7 +409,8 @@ def get_pattern_to_event_to_func_mapping(node: str) \
     def _end_event(event_type: Type[ScyllaDatabaseContinuousEvent], match: Match):
         kwargs = match.groupdict()
         continuous_hash = event_type.get_continuous_hash_from_dict({'node': node, **kwargs})
-        if begin_event := event_registry.find_continuous_events_by_hash(continuous_hash):
+        LOGGER.debug("event_registry (-> ContinuousEventsRegistry) object, %s", ContinuousEventsRegistry())
+        if begin_event := ContinuousEventsRegistry().find_continuous_events_by_hash(continuous_hash):
             begin_event[-1].end_event()
             return
         TestFrameworkEvent(

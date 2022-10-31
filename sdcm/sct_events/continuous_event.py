@@ -62,6 +62,7 @@ class ContinuousEventsRegistry(metaclass=Singleton):
     def del_event(self, event: ContinuousEvent):
         hash_bucket = self.hashed_continuous_events.get(event.continuous_hash, [])
         if event in hash_bucket:
+            LOGGER.debug("Remove continues event: %s with id %s", event.base, event.event_id)
             hash_bucket.remove(event)
 
     def cleanup_registry(self):
@@ -71,6 +72,10 @@ class ContinuousEventsRegistry(metaclass=Singleton):
         return self.hashed_continuous_events.get(continuous_hash, []).copy()
 
     def find_running_disruption_events(self):
+        LOGGER.debug("I am ContinuousEventsRegistry: %s", self)
+        LOGGER.debug("All continuous events: %s", [(event[0].base, event[0].event_id)
+                                                   for event in self.hashed_continuous_events.values()
+                                                   if event])
         running_nemesis_events = [event[0] for event in self.hashed_continuous_events.values()
                                   if event and event[0].base == "DisruptionEvent"]
         return running_nemesis_events

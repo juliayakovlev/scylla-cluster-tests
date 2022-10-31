@@ -120,6 +120,7 @@ class SctEvent:
         self._ready_to_publish = True
         self.event_id = str(uuid.uuid4())
         self.log_level = LOG_LEVEL_MAPPING.get(severity, logging.ERROR)
+        LOGGER.debug("Init sdcm.sct_events.base.SctEvent.__init__ with id %s", self.event_id)
         self.subcontext = []
 
     @classmethod
@@ -217,19 +218,25 @@ class SctEvent:
         # pylint: disable=import-outside-toplevel; to avoid cyclic imports
         from sdcm.sct_events.continuous_event import ContinuousEventsRegistry
         # Add subcontext for event with ERROR and CRITICAL severity only
-        if self.severity.value < 3:
+        if self.severity.value < 2:
             return
 
+        LOGGER.info("add_subcontext, add subcontext for event %s, %s", self.base, self.event_id)
         # Add nemesis info if event happened during nemesis
         if self.base != "DisruptionEvent":
             running_disruption_events = ContinuousEventsRegistry().find_running_disruption_events()
+            LOGGER.info("add_subcontext, running_disruption_events %s", running_disruption_events)
             if not running_disruption_events:
                 return
 
+            LOGGER.info("add_subcontext, self.subcontext before %s", self.subcontext)
             for nemesis in running_disruption_events:
+                self.subcontext = self.subcontext or []
                 # To prevent multiplying of subcontext for LogEvent
                 if nemesis not in self.subcontext:
+                    LOGGER.info("add_subcontext, nemesis %s", nemesis)
                     self.subcontext.append(nemesis)
+            LOGGER.info("add_subcontext, self.subcontext after %s", self.subcontext)
 
     def publish(self, warn_not_ready: bool = True) -> None:
         # pylint: disable=import-outside-toplevel; to avoid cyclic imports
@@ -318,8 +325,11 @@ class InformationalEvent(SctEvent, abstract=True):
 
     def __init__(self, severity: Severity = Severity.UNKNOWN):
         super().__init__(severity=severity)
+        LOGGER.debug("Init sdcm.sct_events.base.InformationalEvent.__init__")
         self.period_type = EventPeriod.INFORMATIONAL.value
         self.add_subcontext()
+        if self.base == "DatabaseLogEvent":
+            LOGGER.debug("InformationalEvent subcontext: %s", self.subcontext)
 
 
 def add_severity_limit_rules(rules: List[str]) -> None:
@@ -432,6 +442,7 @@ class LogEvent(Generic[T_log_event], InformationalEvent, abstract=True):
         self.line_number = 0
         self.backtrace = None
         self.raw_backtrace = None
+        LOGGER.debug("Init sdcm.sct_events.base.LogEvent.__init__ set self.subcontext to []")
         self.subcontext = []
 
         self._ready_to_publish: bool = False  # set it to True in `.add_info()'
@@ -464,6 +475,9 @@ class LogEvent(Generic[T_log_event], InformationalEvent, abstract=True):
         self.line = line
         self.line_number = line_number
 
+        if self.base == "DatabaseLogEvent":
+            LOGGER.debug("LogEvent.add_info subcontext: %s", self.subcontext)
+            LOGGER.info("DatabaseLogEvent severity: %s. Add subcontext", self.severity)
         self.add_subcontext()
 
         self._ready_to_publish = True  # this property not included to the clones, so need to call `.add_info()' first.
