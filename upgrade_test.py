@@ -240,10 +240,10 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
             node.remoter.run("echo 'enable_sstables_mc_format: true' |sudo tee --append /etc/scylla/scylla.yaml")
         if self.params.get('test_upgrade_from_installed_3_1_0'):
             node.remoter.run("echo 'enable_3_1_0_compatibility_mode: true' |sudo tee --append /etc/scylla/scylla.yaml")
-        authorization_in_upgrade = self.params.get('authorization_in_upgrade')
-        if authorization_in_upgrade:
-            node.remoter.run("echo 'authorizer: \"%s\"' |sudo tee --append /etc/scylla/scylla.yaml" %
-                             authorization_in_upgrade)
+        # authorization_in_upgrade = self.params.get('authorization_in_upgrade')
+        # if authorization_in_upgrade:
+        #     node.remoter.run("echo 'authorizer: \"%s\"' |sudo tee --append /etc/scylla/scylla.yaml" %
+        #                      authorization_in_upgrade)
         check_reload_systemd_config(node)
         # Current default 300s aren't enough for upgrade test of Debian 9.
         # Related issue: https://github.com/scylladb/scylla-cluster-tests/issues/1726
@@ -832,6 +832,8 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
                                                     password=loader_utils.DEFAULT_USER_PASSWORD) as session:
             for index, shares in enumerate(service_level_shares):
                 roles.append(create_sla_auth(session=session, shares=shares, index=index))
+                # self.log.debug("Run: GRANT ALL ON KEYSPACE keyspace1 to %s", roles[-1].name)
+                # session.execute(f"GRANT ALL ON KEYSPACE keyspace1 to {roles[-1].name}")
 
         self.add_sla_credentials_to_stress_cmds(workload_names=workloads_with_sla, roles=roles,
                                                 params=self.params, parent_class_name=self.__class__.__name__)
@@ -845,10 +847,11 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
 
         For multi-dc upgrades, alternates upgraded nodes between dc's.
         """
-        self._add_sla_credentials_to_stress_commands(workloads_with_sla=['stress_during_entire_upgrade',
-                                                                         'stress_after_cluster_upgrade'])
         step = itertools_count(start=1)
         self._run_stress_workload("stress_before_upgrade", wait_for_finish=True)
+
+        self._add_sla_credentials_to_stress_commands(workloads_with_sla=['stress_during_entire_upgrade',
+                                                                         'stress_after_cluster_upgrade'])
         stress_thread_pools = self._run_stress_workload("stress_during_entire_upgrade", wait_for_finish=False)
 
         # generate random order to upgrade
