@@ -27,7 +27,7 @@ extra_definitions:
   - create MATERIALIZED VIEW mv_synchronous_lwt_publish_date as select published_date, author from mv_synchronous_lwt_cf where domain is not null and mv_pk is not null and published_date > 0 and published_date > 150000 PRIMARY KEY(published_date, domain, mv_pk) WITH synchronous_updates = true;
   - create MATERIALIZED VIEW mv_synchronous_lwt_publish_date_after_update as select published_date, author from mv_synchronous_lwt_cf where domain is not null and mv_pk is not null and published_date = 300000000 PRIMARY KEY(published_date, domain, mv_pk) WITH synchronous_updates = true;
   - create MATERIALIZED VIEW mv_synchronous_lwt_manual_test as select * from mv_synchronous_lwt_cf where domain is not null and mv_pk is not null and published_date > 1000000 and published_date < 5000000 PRIMARY KEY(published_date, domain, mv_pk);
-  - create MATERIALIZED VIEW mv_synchronous_lwt_deletions as select * from mv_synchronous_lwt_cf where domain is not null and mv_pk is not null and published_date > 150000 and published_date < 240000 PRIMARY KEY(published_date, domain, mv_pk);
+  - create MATERIALIZED VIEW mv_synchronous_lwt_deletions as select * from mv_synchronous_lwt_cf where domain is not null and mv_pk is not null and published_date > 150000 and published_date < 300000 PRIMARY KEY(published_date, domain, mv_pk);
 
 
 ### Column Distribution Specifications ###

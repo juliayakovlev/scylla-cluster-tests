@@ -88,7 +88,8 @@ from sdcm.utils.common import (get_db_tables, generate_random_string,
                                update_certificates, reach_enospc_on_node, clean_enospc_on_node,
                                parse_nodetool_listsnapshots,
                                update_authenticator, ParallelObject,
-                               ParallelObjectResult)
+                               ParallelObjectResult,
+                               get_first_view_with_name_like, get_entity_columns)
 from sdcm.utils.compaction_ops import CompactionOps, StartStopCompactionArgs
 from sdcm.utils.decorators import retrying, latency_calculator_decorator
 from sdcm.utils.decorators import timeout as timeout_decor
@@ -799,8 +800,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         # If this error happens during the first boot with the missing disk this issue is expected and it's not an issue
         with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
                             line="Can't find a column family with UUID", node=self.target_node), \
-            DbEventsFilter(db_event=DatabaseLogEvent.BACKTRACE,
-                           line="Can't find a column family with UUID", node=self.target_node):
+                DbEventsFilter(db_event=DatabaseLogEvent.BACKTRACE,
+                               line="Can't find a column family with UUID", node=self.target_node):
             self.target_node.restart()
 
         self.log.info('Waiting scylla services to start after node restart')
@@ -1091,7 +1092,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.repair_nodetool_rebuild()
 
     def disrupt_nodetool_drain(self):
-        result = self.target_node.run_nodetool("drain", timeout=15*60, coredump_on_timeout=True)
+        result = self.target_node.run_nodetool("drain", timeout=15 * 60, coredump_on_timeout=True)
         self.target_node.run_nodetool("status", ignore_status=True, verbose=True,
                                       warning_event_on_exception=(Exception,))
 
@@ -2654,15 +2655,15 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
                                 line="repair's stream failed: streaming::stream_exception",
                                 node=self.target_node), \
-                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                               line="Can not find stream_manager",
-                               node=self.target_node), \
-                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                               line="is aborted",
-                               node=self.target_node), \
-                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                               line="Failed to repair",
-                               node=self.target_node):
+                    DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                                   line="Can not find stream_manager",
+                                   node=self.target_node), \
+                    DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                                   line="is aborted",
+                                   node=self.target_node), \
+                    DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                                   line="Failed to repair",
+                                   node=self.target_node):
                 self.target_node.remoter.run(
                     "curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json'"
                     " http://127.0.0.1:10000/storage_service/force_terminate_repair"
@@ -3054,7 +3055,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 self.log.error(f"nodetool removenode command exited with status {exit_status}")
                 self.log.debug(
                     f"Remove failed node {node_to_remove} from dead node list {self.cluster.dead_nodes_list}")
-                node = next((n for n in self.cluster.dead_nodes_list if n.ip_address == node_to_remove.ip_address), None)
+                node = next((n for n in self.cluster.dead_nodes_list if n.ip_address == node_to_remove.ip_address),
+                            None)
                 if node:
                     self.cluster.dead_nodes_list.remove(node)
                 else:
@@ -3063,7 +3065,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             # verify node is removed by nodetool status
             removed_node_status = self.cluster.get_node_status_dictionary(
                 ip_address=node_to_remove.ip_address, verification_node=verification_node)
-            assert removed_node_status is None,\
+            assert removed_node_status is None, \
                 "Node was not removed properly (Node status:{})".format(removed_node_status)
 
             # add new node
@@ -3283,15 +3285,15 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         with DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
                             line="This node was decommissioned and will not rejoin",
                             node=self.target_node), \
-            DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                           line="Fail to send STREAM_MUTATION_DONE",
-                           node=self.target_node), \
-            DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
-                           line="streaming::stream_exception",
-                           node=self.target_node), \
-            DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
-                           line="got error in row level repair",
-                           node=self.target_node):
+                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                               line="Fail to send STREAM_MUTATION_DONE",
+                               node=self.target_node), \
+                DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR,
+                               line="streaming::stream_exception",
+                               node=self.target_node), \
+                DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR,
+                               line="got error in row level repair",
+                               node=self.target_node):
             while time.time() - start_time < timeout:
                 if list(log_follower):
                     time.sleep(delay)
@@ -3307,6 +3309,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         a new node in its place in case it was.
         4. Trigger a rebuild on the decommissioned node.
         """
+
         def decommission_post_action():
             """
             Verify that the decommission ocurred, was interrupted and
@@ -3549,7 +3552,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not self.cluster.params.get('server_encrypt'):
             raise UnsupportedNemesis('Server Encryption is not enabled, hence skipping')
 
-        @timeout_decor(timeout=600, allowed_exceptions=(LogContentNotFound, ))
+        @timeout_decor(timeout=600, allowed_exceptions=(LogContentNotFound,))
         def check_ssl_reload_log(node_system_log):
             if not list(node_system_log):
                 raise LogContentNotFound('Reload SSL message not found in node log')
@@ -3816,7 +3819,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self._switch_to_network_replication_strategy(self.cluster.get_test_keyspaces() + system_keyspaces)
         datacenters = list(self.tester.db_cluster.get_nodetool_status().keys())
         self.tester.create_keyspace("keyspace_new_dc", replication_factor={
-                                    datacenters[0]: min(3, len(self.cluster.nodes))})
+            datacenters[0]: min(3, len(self.cluster.nodes))})
         node_added = False
         try:
             with temporary_replication_strategy_setter(node) as replication_strategy_setter:
@@ -3964,6 +3967,182 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             raise NemesisSubTestFailure("\n".join(f"Step: {error.step}. Error:\n - {error}"
                                                   for error in error_events if error)
                                         )
+
+    @staticmethod
+    def _set_queries_for_update_nemesis(columns_dict, view_name):
+        set_column_value = "'%s'" if columns_dict['set_column']["type"] == "text" else "%s"
+        key_column_value = "'%s'" if columns_dict['key_column']["type"] == "text" else "%s"
+        cl_column_value = "'%s'" if columns_dict['cl_key_column']["type"] == "text" else "%s"
+
+        # TODO: check what is partition key in the table. Partition key can not be part of if clause
+        update_query = f"update {columns_dict['table_name']} " \
+                       f"set {columns_dict['set_column']['column_name']} = {set_column_value} " \
+                       f"where {columns_dict['cl_key_column']['column_name']} = {cl_column_value} " \
+                       f"if {columns_dict['key_column']['column_name']} = {key_column_value}"
+
+        select_set_value_query = f"SELECT {columns_dict['set_column']['column_name']} as set_value " \
+                                 f"from {view_name} where " \
+                                 f"{columns_dict['key_column']['column_name']} = {key_column_value} and " \
+                                 f"{columns_dict['cl_key_column']['column_name']} = {cl_column_value}"
+        # Select data set for update
+        select_data_set_query = (f"SELECT {columns_dict['key_column']['column_name']} as key, "
+                                 f"{columns_dict['cl_key_column']['column_name']} as cl, "
+                                 f"{columns_dict['set_column']['column_name']} as set_value "
+                                 f"from {view_name} limit 10000")
+
+        return update_query, select_set_value_query, select_data_set_query
+
+    def _update_view_row_and_validate(self, select_data_set_query, update_query, select_set_value_query, view_name,
+                                      synchronous_updates_keyspace):
+        with self.cluster.cql_connection_patient(self.cluster.nodes[0],
+                                                 keyspace=synchronous_updates_keyspace) as session:
+            session.default_consistency_level = ConsistencyLevel.QUORUM
+            self.log.debug("Select dataset query: %s", select_data_set_query)
+            # data_set = session.execute(select_data_set_query)
+            data_set = self.tester.fetch_all_rows(session=session,
+                                                  default_fetch_size=500,
+                                                  statement=select_data_set_query,
+                                                  verbose=True)
+
+            if not data_set:
+                raise ValueError(f"Failed fetch data from "
+                                 f"'{synchronous_updates_keyspace}.{view_name}' with "
+                                 f"query: {select_data_set_query}. Empty result.")
+
+            select_set_value_queries = [select_set_value_query]
+            if "_asynch_test" in view_name:
+                views = ["cf_update_asynch_view_1", "cf_update_asynch_view_2", "cf_update_asynch_view_3"]
+            else:
+                views = ["cf_update_synch_view_1", "cf_update_synch_view_2", "cf_update_synch_view_3"]
+            for view in views:
+                select_set_value_queries.append(select_set_value_query.replace(f"from {view_name} where ",
+                                                                               f"from {view} where "))
+            found_not_updated_value = 0
+
+            def _select_and_validate(select_query, found_not_updated_value):
+                try:
+                    result = session.execute(select_query)
+                except Exception as error:
+                    self.log.debug("Failed select set_value query: %s\nError: %s", select_query, error)
+                    raise
+                for select_row in result:
+                    if select_row.set_value != set_column_new_value:
+                        self.log.debug("Found not updated value: %s. Expected value: %s. Value before update: %s",
+                                       select_row.set_value, set_column_new_value, set_column_orig_value)
+                        self.log.debug("select_row.set_value type value: %s. set_column_new_value type: %s",
+                                       select_row.set_value, set_column_new_value, set_column_orig_value)
+                        found_not_updated_value += 1
+                if found_not_updated_value:
+                    self.log.debug("select_query: %s\nfound_not_updated_value: %s",
+                                   select_query, found_not_updated_value)
+
+            InfoEvent(message=f"Start update {view_name} view").publish()
+            for row in data_set:
+                set_column_orig_value = row.set_value
+                set_column_new_value = random.randint(0, 1000000000)
+                if isinstance(row.set_value, str):
+                    set_column_new_value = str(set_column_new_value)
+
+                call_validate = []
+                for sel_query in select_set_value_queries:
+                    call_validate.append(partial(_select_and_validate, select_query=sel_query % (row.key, row.cl),
+                                                 found_not_updated_value=found_not_updated_value))
+
+                query = update_query % (set_column_new_value, row.cl, row.key)
+                try:
+                    session.execute(query)
+                except Exception as error:
+                    self.log.debug("Failed update query: %s.\nError: %s: ", query, error)
+                    raise
+
+                ParallelObject(objects=call_validate, timeout=1200).call_objects()
+
+                # for sel_query in select_set_value_queries:
+                #     select_query = sel_query % (row.key, row.cl)
+                # try:
+                #     result = session.execute(select_query)
+                # except Exception as error:
+                #     self.log.debug("Failed select set_value query: %s\nError: %s", select_query, error)
+                #     raise
+                # for select_row in result:
+                #     if select_row.set_value != set_column_new_value:
+                #         self.log.debug("Found not updated value: %s. Expected value: %s. Value before update: %s",
+                #                        select_row.set_value, set_column_new_value, set_column_orig_value)
+                #         self.log.debug("select_row.set_value type value: %s. set_column_new_value type: %s",
+                #                        select_row.set_value, set_column_new_value, set_column_orig_value)
+                #         found_not_updated_value += 1
+
+            InfoEvent(message=f"Finish update {view_name} view")
+
+        return found_not_updated_value
+
+    def _get_view_columns(self, view_name_class_param: str, view_name_substr: str) -> tuple:
+        synchronous_updates_keyspace = getattr(self.tester, "synchronous_updates_keyspace", None)
+        synch_view_name = getattr(self.tester, view_name_class_param, None)
+        synchronous_updates_table = getattr(self.tester, "synchronous_updates_table", None)
+
+        if not (synch_view_name and synchronous_updates_keyspace):
+            with self.cluster.cql_connection_patient(self.cluster.nodes[0]) as session:
+                synchronous_updates_keyspace, synch_view_name, synchronous_updates_table = \
+                    get_first_view_with_name_like(view_name_substr=view_name_substr, session=session)
+                if synchronous_updates_keyspace is None or synch_view_name is None:
+                    raise UnsupportedNemesis('This nemesis is supported for "synchronous_updates" view mode test')
+
+        with self.cluster.cql_connection_patient(self.cluster.nodes[0]) as session:
+            view_details = get_entity_columns(keyspace_name=synchronous_updates_keyspace,
+                                              entity_name=synch_view_name,
+                                              session=session)
+
+        columns_dict = {"table_name": synchronous_updates_table}
+        for row in view_details:
+            if row["type"] not in ['int', 'text']:
+                raise ValueError(f"Expected 'int' or 'text' column type, got {row['type']}")
+
+            column_dict = {"column_name": row["column_name"], "type": row["type"]}
+            if row["kind"] == "partition_key":
+                columns_dict["key_column"] = column_dict
+            elif row["kind"] == "clustering":
+                columns_dict["cl_key_column"] = column_dict
+            elif row["kind"] == "regular":
+                columns_dict["set_column"] = column_dict
+        return synchronous_updates_keyspace, synch_view_name, columns_dict
+
+    def disrupt_update_synchronous_view(self):
+        synchronous_updates_keyspace, synch_view_name, columns_dict = self._get_view_columns(
+            view_name_class_param="synch_view_name", view_name_substr='_synch_test')
+
+        update_query, select_set_value_query, select_data_set_query = self._set_queries_for_update_nemesis(
+            columns_dict=columns_dict, view_name=synch_view_name)
+        found_not_updated_value = self._update_view_row_and_validate(
+            select_data_set_query=select_data_set_query,
+            update_query=update_query,
+            select_set_value_query=select_set_value_query,
+            view_name=synch_view_name,
+            synchronous_updates_keyspace=synchronous_updates_keyspace)
+
+        if found_not_updated_value:
+            raise ValueError("Value returned before the view is updated unexpectedly. Expected that in synchronous "
+                             "materialized view the operation does not return until the view is updated.")
+
+    def disrupt_update_asynchronous_view(self):
+        synchronous_updates_keyspace, asynch_view_name, columns_dict = self._get_view_columns(
+            view_name_class_param="asynch_view_name", view_name_substr='_asynch_test')
+
+        update_query, select_set_value_query, select_data_set_query = self._set_queries_for_update_nemesis(
+            columns_dict=columns_dict, view_name=asynch_view_name)
+        found_not_updated_value = self._update_view_row_and_validate(
+            select_data_set_query=select_data_set_query,
+            update_query=update_query,
+            select_set_value_query=select_set_value_query,
+            view_name=asynch_view_name,
+            synchronous_updates_keyspace=synchronous_updates_keyspace)
+
+        if found_not_updated_value:
+            InfoEvent(message="Value returned before the view is updated as expected for asynchronous materialized "
+                              "view").publish()
+        else:
+            InfoEvent(message="All values returned updated (for asynchronous materialized view value may return before "
+                              "the view is updated).").publish()
 
 
 def disrupt_method_wrapper(method, is_exclusive=False):  # pylint: disable=too-many-statements
@@ -4160,7 +4339,6 @@ class NoOpMonkey(Nemesis):
 
 
 class AddRemoveDcNemesis(Nemesis):
-
     disruptive = False
     kubernetes = False
     run_with_gemini = False
@@ -4657,7 +4835,7 @@ class RollbackNemesis(Nemesis):
         node.remoter.run(
             'sudo yum downgrade scylla scylla-server scylla-jmx scylla-tools scylla-conf scylla-kernel-conf scylla-debuginfo -y')
         # flush all memtables to SSTables
-        node.run_nodetool("drain", timeout=15*60, coredump_on_timeout=True)
+        node.run_nodetool("drain", timeout=15 * 60, coredump_on_timeout=True)
         node.remoter.run('sudo cp {0}-backup {0}'.format(SCYLLA_YAML_PATH))
         node.remoter.run('sudo systemctl restart scylla-server.service')
         node.wait_db_up(verbose=True)
@@ -5166,7 +5344,6 @@ class CDCStressorMonkey(Nemesis):
 
 
 class DecommissionStreamingErrMonkey(Nemesis):
-
     disruptive = True
     topology_changes = True
 
@@ -5175,7 +5352,6 @@ class DecommissionStreamingErrMonkey(Nemesis):
 
 
 class RebuildStreamingErrMonkey(Nemesis):
-
     disruptive = True
 
     def disrupt(self):
@@ -5183,7 +5359,6 @@ class RebuildStreamingErrMonkey(Nemesis):
 
 
 class RepairStreamingErrMonkey(Nemesis):
-
     disruptive = True
 
     def disrupt(self):
@@ -5329,3 +5504,41 @@ class SlaNemeses(Nemesis):
 
     def disrupt(self):
         self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list)
+
+
+class UpdateAsynchronousView(Nemesis):
+    disruptive = False
+
+    def disrupt(self):
+        self.disrupt_update_asynchronous_view()
+
+
+class UpdateSynchronousView(Nemesis):
+    disruptive = False
+
+    def disrupt(self):
+        self.disrupt_update_synchronous_view()
+
+
+class DeletePartitionSynchronousView(Nemesis):
+    disruptive = False
+
+    def disrupt(self):
+        pass
+
+
+class UpdateViewMonkey(Nemesis):
+    """
+    Selected number of nemesis that is focused on scylla-operator functionality
+    """
+    disruptive = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.disrupt_methods_list = [
+            'disrupt_update_asynchronous_view',
+            'disrupt_update_synchronous_view',
+        ]
+
+    def disrupt(self):
+        self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list, predefined_sequence=False)

@@ -24,19 +24,25 @@ table_definition: |
   ) WITH comment='A table to hold blog posts'
 
 extra_definitions:
-  - create MATERIALIZED VIEW cf_update_2_columns_mv_pk as select mv_pk, author from mv_synchronous_cf where domain is not null and mv_pk > 1000000 and mv_pk <= 1150000 PRIMARY KEY(mv_pk, domain) WITH synchronous_updates = true;
-  - create MATERIALIZED VIEW cf_update_mv_pk as select * from mv_synchronous_cf where domain is not null and mv_pk > 1150000 and mv_pk < 300000000 PRIMARY KEY(mv_pk, domain) WITH synchronous_updates = true;
-  - create MATERIALIZED VIEW cf_update_asynch_test as select published_date, author from mv_synchronous_cf where domain is not null and published_date >= 10000000 and published_date < 19000000 PRIMARY KEY(published_date, domain);
-  - create MATERIALIZED VIEW cf_update_synch_test as select * from mv_synchronous_cf where domain is not null and published_date > 1000000 and published_date < 10000000 PRIMARY KEY(published_date, domain) WITH synchronous_updates = true;
+  - create MATERIALIZED VIEW cf_update_2_columns_mv_pk as select mv_pk, author from mv_synchronous_cf where domain is not null and mv_pk > 0 and mv_pk <= 100000000 PRIMARY KEY(mv_pk, domain) WITH synchronous_updates = true;
+  - create MATERIALIZED VIEW cf_update_mv_pk as select * from mv_synchronous_cf where domain is not null and mv_pk > 100000001 and mv_pk < 200000000 PRIMARY KEY(mv_pk, domain) WITH synchronous_updates = true;
+  - create MATERIALIZED VIEW cf_update_asynch_test as select author from mv_synchronous_cf where domain is not null and published_date >= 0 and published_date < 10000000 PRIMARY KEY(published_date, domain);
+  - create MATERIALIZED VIEW cf_update_synch_test as select title from mv_synchronous_cf where domain is not null and published_date > 10000001 and published_date < 20000000 PRIMARY KEY(published_date, domain) WITH synchronous_updates = true;
+  - create MATERIALIZED VIEW cf_update_asynch_view_1 as select author from mv_synchronous_cf where domain is not null and published_date is not null PRIMARY KEY(published_date, domain);
+  - create MATERIALIZED VIEW cf_update_asynch_view_2 as select author from mv_synchronous_cf where domain is not null and published_date is not null PRIMARY KEY(published_date, domain);
+  - create MATERIALIZED VIEW cf_update_asynch_view_3 as select author from mv_synchronous_cf where domain is not null and published_date is not null PRIMARY KEY(published_date, domain);
+  - create MATERIALIZED VIEW cf_update_synch_view_1 as select title from mv_synchronous_cf where domain is not null and published_date is not null PRIMARY KEY(published_date, domain) WITH synchronous_updates = true;
+  - create MATERIALIZED VIEW cf_update_synch_view_2 as select title from mv_synchronous_cf where domain is not null and published_date is not null PRIMARY KEY(published_date, domain) WITH synchronous_updates = true;
+  - create MATERIALIZED VIEW cf_update_synch_view_3 as select title from mv_synchronous_cf where domain is not null and published_date is not null PRIMARY KEY(published_date, domain) WITH synchronous_updates = true;
 
 ### Column Distribution Specifications ###
 
 columnspec:
   - name: domain
-    population: seq(1..200000001)  #10M possible domains to pick from
+    population: seq(1..200000000)  #20M possible domains to pick from
 
   - name: published_date
-    cluster: uniform(1..2000000)         #under each domain we will have max 1000 posts
+    cluster: seq(1..20000000)
 
   - name: mv_pk
     population: seq(1..2001000)
@@ -73,12 +79,6 @@ queries:
    select_mv_2:
       cql: select * from cf_update_mv_pk where domain = ? and mv_pk = ? LIMIT 1
       fields: samerow
-   mv_pk_update_two_columns:
-      cql: update mv_synchronous_cf set mv_pk = ?, author = 'text' where domain = ?
+   url_column_update:
+      cql: update mv_synchronous_cf set url = ? where domain = ?
       fields: samerow
-   mv_pk_update_all_non_pk:
-      cql: update mv_synchronous_cf set author = ?, published_date = ?, url = ?, title = ?  where domain = ?
-      fields: samerow
-   mv_deletes:
-     cql: delete from mv_synchronous_cf where domain = ?
-     fields: samerow

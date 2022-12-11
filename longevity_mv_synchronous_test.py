@@ -24,7 +24,10 @@ from sdcm.sct_events.database import DatabaseLogEvent
 from sdcm.sct_events.filters import DbEventsFilter
 from sdcm.sct_events.health import DataValidatorEvent
 from sdcm.sct_events.system import InfoEvent
-from sdcm.utils.common import keyspace_min_max_tokens, get_view_name_from_user_profile, get_keyspace_from_user_profile
+from sdcm.utils.common import (keyspace_min_max_tokens,
+                               get_view_name_from_user_profile,
+                               get_keyspace_from_user_profile,
+                               get_table_from_user_profile)
 from sdcm.utils.data_validator import LongevityDataValidator
 from sdcm.sct_events.group_common_events import ignore_mutation_write_errors
 
@@ -35,17 +38,29 @@ class MvSynchronousLongevityTest(LongevityTest):
     def __init__(self, *args):
         super().__init__(*args)
         self.data_validator = None
+        user_profile = "_synchronous_updates."
         self.synchronous_updates_keyspace = get_keyspace_from_user_profile(params=self.params,
                                                                            stress_cmds_part="prepare_write_cmd",
-                                                                           search_for_user_profile="_synchronous_updates.")
+                                                                           search_for_user_profile=user_profile)
+        self.synchronous_updates_table = get_table_from_user_profile(params=self.params,
+                                                                     stress_cmds_part="prepare_write_cmd",
+                                                                     search_for_user_profile=user_profile)
         self.synch_view_name = get_view_name_from_user_profile(params=self.params,
                                                                stress_cmds_part="prepare_write_cmd",
-                                                               search_for_user_profile="_synchronous_updates.",
+                                                               search_for_user_profile=user_profile,
                                                                view_name_substr="_synch_test")
+        # self.synch_view_update_cql = get_update_query_from_user_profile(params=self.params,
+        #                                                                 stress_cmds_part="prepare_write_cmd",
+        #                                                                 search_for_user_profile=user_profile,
+        #                                                                 query_name_substr="_update_synch")
         self.asynch_view_name = get_view_name_from_user_profile(params=self.params,
                                                                 stress_cmds_part="prepare_write_cmd",
-                                                                search_for_user_profile="_synchronous_updates.",
+                                                                search_for_user_profile=user_profile,
                                                                 view_name_substr="_asynch_test")
+        # self.asynch_view_update_cql = get_update_query_from_user_profile(params=self.params,
+        #                                                                  stress_cmds_part="prepare_write_cmd",
+        #                                                                  search_for_user_profile=user_profile,
+        #                                                                  query_name_substr="_update_asynch")
 
     def wait_for_views_build_for_synch_mode_test(self):
         if not (self.synch_view_name and self.asynch_view_name):

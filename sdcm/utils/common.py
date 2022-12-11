@@ -190,6 +190,40 @@ def get_keyspace_from_user_profile(params, stress_cmds_part: str, search_for_use
     return profile['keyspace']
 
 
+def get_table_from_user_profile(params, stress_cmds_part: str, search_for_user_profile: str):
+    stress_cmd = get_stress_command_for_profile(params=params, stress_cmds_part=stress_cmds_part,
+                                                search_for_user_profile=search_for_user_profile)
+    if not stress_cmd:
+        return ""
+
+    _, profile = get_profile_content(stress_cmd[0])
+    return profile['table']
+
+
+def get_first_view_with_name_like(view_name_substr: str, session) -> tuple:
+    query = f"select keyspace_name, view_name, base_table_name from system_schema.views " \
+            f"where view_name like '%_{view_name_substr}' ALLOW FILTERING"
+    LOGGER.debug("Run query: %s", query)
+    result = session.execute(query)
+    if not result:
+        return None, None, None
+
+    return result.one().keyspace_name, result.one().view_name, result.one().base_table_name
+
+
+def get_entity_columns(keyspace_name: str, entity_name: str, session) -> list:
+    query = f"select column_name, kind, type from system_schema.columns where keyspace_name = '{keyspace_name}' " \
+            f"and table_name='{entity_name}'"
+    LOGGER.debug("Run query: %s", query)
+    result = session.execute(query)
+    view_details = []
+
+    for row in result:
+        view_details.append({"column_name": row.column_name, "kind": row.kind, "type": row.type})
+
+    return view_details
+
+
 def generate_random_string(length):
     return random.choice(string.ascii_uppercase) + ''.join(
         random.choice(string.ascii_uppercase + string.digits) for x in range(length - 1))
