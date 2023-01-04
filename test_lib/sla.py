@@ -347,22 +347,23 @@ class Role(UserRoleBase):
 
     def validate_role_service_level_attributes_against_db(self):
         service_level = self.list_user_role_attached_service_levels()
+        LOGGER.debug("List of service levels for role %s: %s", self.name, service_level)
         if not service_level and self.attached_service_level:
             ValueError(f"No Service Level attached to the role '{self.name}'. But it is expected that Service Level "
                        f"'{self._attached_service_level_name}' is attached to this role. Validate if it is test or "
                        "Scylla issue")
         elif not self.attached_service_level and service_level:
-            ValueError(f"Found attached Service Level '{service_level}' to the role '{self.name}'. "
+            ValueError(f"Found attached Service Level '{service_level[0].service_level}' to the role '{self.name}'. "
                        "But it is expected that no attached Service Level. Validate if it is test or Scylla issue")
 
-        if service_level.service_level == self._attached_service_level_name:
+        if service_level[0].service_level == self._attached_service_level_name:
             db_service_level = self.attached_service_level.list_service_level()
             if db_service_level.shares != self._attached_service_level_shares:
-                ValueError(f"Found attached Service Level '{service_level.service_level}' to the role '{self.name}' "
+                ValueError(f"Found attached Service Level '{service_level[0].service_level}' to the role '{self.name}' "
                            f"with {db_service_level.shares} shares. Expected {self._attached_service_level_shares} "
                            f"shares. Validate if it is test or Scylla issue")
         else:
-            ValueError(f"Found attached Service Level '{service_level.service_level}' to the role '{self.name}'. "
+            ValueError(f"Found attached Service Level '{service_level[0].service_level}' to the role '{self.name}'. "
                        "But it is expected that no attached Service Level. Validate if it is test or Scylla issue")
 
 

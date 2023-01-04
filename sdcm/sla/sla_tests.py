@@ -82,8 +82,7 @@ class Steps(SlaUtils):
     @staticmethod
     def drop_service_level_and_run_load(sl_for_drop, role_with_sl_to_drop, sleep=600):
         # pylint: disable=not-context-manager
-        with TestStepEvent(step=f"Drop service level {sl_for_drop.name} with {role_with_sl_to_drop.name}. "
-                                f"Validate scheduler runtime during load") as wp_event:
+        with TestStepEvent(step=f"Drop service level {sl_for_drop.name} with {role_with_sl_to_drop.name}.") as wp_event:
             try:
                 sl_for_drop.drop()
                 role_with_sl_to_drop.reset_service_level()
