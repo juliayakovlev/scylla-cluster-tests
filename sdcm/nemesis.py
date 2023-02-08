@@ -3958,6 +3958,18 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
 
         self.format_error_for_sla_test_and_raise(error_events=error_events)
 
+    def disrupt_sla_chaos(self):
+        if not self.cluster.nodes[0].is_enterprise:
+            raise UnsupportedNemesis("SLA feature is only supported by Scylla Enterprise")
+
+        # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
+        # inserted in any case
+        dataset_size = self.get_test_data_set_size() or 50000000
+        self.log.debug("Dataset size for nemesis: %s", dataset_size)
+
+        sla_tests = SlaTests()
+        sla_tests.test_sla_chaos(tester=self.tester, num_of_partitions=dataset_size)
+
     @staticmethod
     def format_error_for_sla_test_and_raise(error_events):
         if any(error_events):
@@ -5316,6 +5328,14 @@ class SlaSevenSlWithMaxSharesDuringLoad(Nemesis):
 
     def disrupt(self):
         self.disrupt_seven_sl_with_max_shares_during_load()
+
+
+class SlaChaos(Nemesis):
+    disruptive = False
+    sla = True
+
+    def disrupt(self):
+        self.disrupt_sla_chaos()
 
 
 class SlaNemeses(Nemesis):

@@ -339,6 +339,26 @@ class Role(UserRoleBase):
         LOGGER.debug('Role %s has been created', self.name)
         return self
 
+    def list_roles_granted_me(self, recursive=True):
+        query = f'LIST ROLES OF {self.name}{" NORECURSIVE" if not recursive else ""}'
+        if self.verbose:
+            LOGGER.debug('List granted roles query: %s', query)
+        result = self.session.execute(query).all()
+        LOGGER.info("list_roles_granted_me: %s", result)
+
+        if len(result) == 0:
+            return None
+
+        granted_roles = []
+        for row in result:
+            if row.role == self.name:
+                continue
+
+            granted_roles.append(row.role)
+
+        LOGGER.info("granted_roles: %s", granted_roles)
+        return granted_roles
+
     def role_full_info_dict(self) -> dict:
         return {'service_level': self.attached_service_level,
                 'service_level_shares': self._attached_service_level_shares,
@@ -355,6 +375,9 @@ class Role(UserRoleBase):
         elif not self.attached_service_level and service_level:
             ValueError(f"Found attached Service Level '{service_level[0].service_level}' to the role '{self.name}'. "
                        "But it is expected that no attached Service Level. Validate if it is test or Scylla issue")
+        elif not service_level:
+            LOGGER.debug("Role %s has no attached Service Level", self.name)
+            return
 
         if service_level[0].service_level == self._attached_service_level_name:
             db_service_level = self.attached_service_level.list_service_level()
