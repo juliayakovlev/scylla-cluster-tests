@@ -413,6 +413,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             schema_changes: Optional[bool] = None,
             config_changes: Optional[bool] = None,
             free_tier_set: Optional[bool] = None,
+            sla: Optional[bool] = False
     ) -> List[str]:
         return self.get_list_of_methods_by_flags(
             disruptive=disruptive,
@@ -424,6 +425,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             schema_changes=schema_changes,
             config_changes=config_changes,
             free_tier_set=free_tier_set,
+            sla=sla,
         )
 
     def _is_it_on_kubernetes(self) -> bool:
@@ -1744,7 +1746,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if self._nemesis_selector_list:
             return self._nemesis_selector_list
 
-        nemesis_selector = self.cluster.params.get('nemesis_selector') or []
+        nemesis_selector = self.cluster.params.get('nemesis_selector') or ["!sla"]
         if self.cluster.params.get('nemesis_exclude_disabled'):
             nemesis_selector.append('!disabled')
         self._nemesis_selector_list = nemesis_selector
@@ -5323,7 +5325,7 @@ class SlaNemeses(Nemesis):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.build_list_of_disruptions_to_execute()
+        self.build_list_of_disruptions_to_execute(nemesis_selector=['sla'])
         self.disrupt_methods_list = self.get_list_of_methods_by_flags(sla=True)
         self.shuffle_list_of_disruptions()
 
