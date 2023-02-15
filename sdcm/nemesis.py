@@ -3865,8 +3865,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not self.cluster.params.get('authenticator'):
             raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        # if not getattr(self.tester, "roles", None):
+        #     raise UnsupportedNemesis('This nemesis is supported for SLA test only')
 
         # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
         # inserted in any case
@@ -3885,8 +3885,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not self.cluster.params.get('authenticator'):
             raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        # if not getattr(self.tester, "roles", None):
+        #     raise UnsupportedNemesis('This nemesis is supported for SLA test only')
 
         # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
         # inserted in any case
@@ -3905,8 +3905,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not self.cluster.params.get('authenticator'):
             raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        # if not getattr(self.tester, "roles", None):
+        #     raise UnsupportedNemesis('This nemesis is supported for SLA test only')
 
         # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
         # inserted in any case
@@ -3926,8 +3926,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not self.cluster.params.get('authenticator'):
             raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        # if not getattr(self.tester, "roles", None):
+        #     raise UnsupportedNemesis('This nemesis is supported for SLA test only')
 
         # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
         # inserted in any case
@@ -3948,8 +3948,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not self.cluster.params.get('authenticator'):
             raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        # if not getattr(self.tester, "roles", None):
+        #     raise UnsupportedNemesis('This nemesis is supported for SLA test only')
 
         # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
         # inserted in any case
@@ -3971,8 +3971,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not self.cluster.params.get('authenticator'):
             raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        # if not getattr(self.tester, "roles", None):
+        #     raise UnsupportedNemesis('This nemesis is supported for SLA test only')
 
         # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
         # inserted in any case

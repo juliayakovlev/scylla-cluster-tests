@@ -216,6 +216,7 @@ class SlaUtils:
         #   attributes: ServiceLevelAttributes(shares=250, timeout=None, workload_type=None),
         #   'service_level_shares': 250, 'service_level_name': "'sl250'", 'sl_group': 'sl:sl250',
         #   'sl_group_runtime': 181.23794405382156}}
+        LOGGER.debug("validate_runtime_relatively_to_share (debug purpose): %s", roles_full_info)
         shares = [sl['service_level_shares'] for sl in roles_full_info.values()]
 
         # TODO: as Eliran about this case
@@ -237,6 +238,7 @@ class SlaUtils:
         runtimes = [sl['sl_group_runtime'] for sl in roles_full_info.values()]
         # If runtime of role1 less than shares of role2, dividing result will be less than 1 always
         try:
+            LOGGER.debug("validate_runtime_relatively_to_share, runtimes (debug purpose): %s", runtimes)
             runtimes_ratio = (runtimes[0] / runtimes[1]) < 1
         except ZeroDivisionError:
             # If runtimes[1] == 0 then runtimes_ratio can not be less than 1
@@ -252,6 +254,9 @@ class SlaUtils:
             # If scheduler runtime per scheduler group is not as expected - return error.
             runtime_per_sl_group = []
             for service_level in roles_full_info.values():
+                LOGGER.debug("validate_runtime_relatively_to_share, service_level (debug purpose): %s", service_level)
+                LOGGER.debug("validate_runtime_relatively_to_share, sl_group_runtime (debug purpose): %s",
+                             round(service_level['sl_group_runtime'], 2))
                 runtime_per_sl_group.append(f"{service_level['sl_group']} (shares "
                                             f"{service_level['service_level_shares']}): "
                                             f"{round(service_level['sl_group_runtime'], 2)}")

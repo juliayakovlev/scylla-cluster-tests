@@ -1652,7 +1652,7 @@ class ScyllaCQLSession:
 
         if self.verbose:
             self.session.execute = execute_verbose
-            self.session.execute_async = execute_async_verbose
+            # self.session.execute_async = execute_async_verbose
         return self.session
 
     def __exit__(self, exc_type, exc_val, exc_tb):
