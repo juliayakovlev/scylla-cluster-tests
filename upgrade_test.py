@@ -837,10 +837,11 @@ class UpgradeTest(FillDatabaseData):
 
         For multi-dc upgrades, alternates upgraded nodes between dc's.
         """
-        self._add_sla_credentials_to_stress_commands(workloads_with_sla=['stress_during_entire_upgrade',
-                                                                         'stress_after_cluster_upgrade'])
         step = itertools_count(start=1)
         self._run_stress_workload("stress_before_upgrade", wait_for_finish=True)
+
+        self._add_sla_credentials_to_stress_commands(workloads_with_sla=['stress_during_entire_upgrade',
+                                                                         'stress_after_cluster_upgrade'])
         stress_thread_pools = self._run_stress_workload("stress_during_entire_upgrade", wait_for_finish=False)
 
         # generate random order to upgrade
