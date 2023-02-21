@@ -82,9 +82,12 @@ class SlaUtils:
 
         params = {'n': num_of_partitions, 'user': role.name, 'password': role.password, 'pop': pop,
                   'duration': '%dm' % stress_duration_min, 'threads': rate}
-        if kwargs:
-            params.update(kwargs['kwargs'])
         c_s_cmd = stress_command.format(**params)
+
+        if kwargs:
+            LOGGER.debug("Kwargs: %s", kwargs['kwargs'])
+            for param, value in kwargs['kwargs'].items():
+                c_s_cmd += f" {param} {value}"
         LOGGER.info("Created cassandra-stress command: %s", c_s_cmd)
 
         return c_s_cmd
@@ -145,7 +148,13 @@ class SlaUtils:
 
         result = []
         sl_group_runtime_zero = False
-        for node_ip in db_cluster.get_node_private_ips():
+        # for node_ip in db_cluster.get_node_private_ips():
+        for node in db_cluster.nodes:
+            # If Scylla is not running on the node - do not perform validation
+            if not (node.jmx_up() and node.db_up()):
+                continue
+
+            node_ip = node.private_ip_address
             scheduler_runtime_per_sla = prometheus_stats.get_scylla_scheduler_runtime_ms(start_time, end_time, node_ip,
                                                                                          irate_sample_sec='60s')
             # Example of scheduler_runtime_per_sla:
@@ -207,6 +216,7 @@ class SlaUtils:
                 result.insert(0, "\nProbably the issue https://github.com/scylladb/scylla-enterprise/issues/2572")
             raise SchedulerRuntimeUnexpectedValue("".join(result))
 
+    # pylint: disable=too-many-branches
     @staticmethod
     def validate_runtime_relatively_to_share(roles_full_info: dict, node_ip: str,
                                              load_high_enough: bool = None, node_cpu: float = None,
@@ -217,6 +227,13 @@ class SlaUtils:
         #   'service_level_shares': 250, 'service_level_name': "'sl250'", 'sl_group': 'sl:sl250',
         #   'sl_group_runtime': 181.23794405382156}}
         shares = [sl['service_level_shares'] for sl in roles_full_info.values()]
+
+        if not shares or len([s for s in shares if s]) < 2:
+            WorkloadPrioritisationEvent.RatioValidationEvent(
+                message='Not enough service level shares for validation. Expected two Service Levels, received '
+                        f'{len([s for s in shares if s])}: {shares}. Runtime can not be validated',
+                severity=Severity.NORMAL).publish()
+            return None
 
         # TODO: as Eliran about this case
         # If both roles are connected to the servie level with same shares we can not validate the ratio as we can not
@@ -235,7 +252,7 @@ class SlaUtils:
             shares_ratio = False
 
         runtimes = [sl['sl_group_runtime'] for sl in roles_full_info.values()]
-        # If runtime of role1 less than shares of role2, dividing result will be less than 1 always
+        # If runtime of role1 less than runtime of role2, dividing result will be less than 1 always
         try:
             runtimes_ratio = (runtimes[0] / runtimes[1]) < 1
         except ZeroDivisionError:
@@ -244,21 +261,31 @@ class SlaUtils:
 
         # Validate that role with higher shares get more resources and vice versa
         error_message = ""
-        if shares_ratio == runtimes_ratio:
+        if 0.0 not in runtimes and shares_ratio == runtimes_ratio:
             WorkloadPrioritisationEvent.RatioValidationEvent(
                 message=f'Role with higher shares got more resources on the node with IP {node_ip} as expected',
                 severity=Severity.NORMAL).publish()
         else:
             # If scheduler runtime per scheduler group is not as expected - return error.
             runtime_per_sl_group = []
+            zero_runtime_service_level = []
             for service_level in roles_full_info.values():
                 runtime_per_sl_group.append(f"{service_level['sl_group']} (shares "
                                             f"{service_level['service_level_shares']}): "
                                             f"{round(service_level['sl_group_runtime'], 2)}")
+                if service_level['sl_group_runtime'] == 0.0:
+                    zero_runtime_service_level.append(service_level['sl_group'])
+
             runtime_per_sl_group_str = "\n  ".join(runtime_per_sl_group)
 
-            message = (f'\n(Node {node_ip}) - Role with higher shares got less resources unexpectedly.%s '
-                       f'Runtime per service level group:\n  {runtime_per_sl_group_str}')
+            if zero_runtime_service_level:
+                message = (f'\n(Node {node_ip}) - Service level{"(s)" if len(zero_runtime_service_level) > 1 else ""} '
+                           f'{", ".join(zero_runtime_service_level)} did not get resources unexpectedly.%s '
+                           f'Runtime per service level group:\n  {runtime_per_sl_group_str}')
+            else:
+                message = (f'\n(Node {node_ip}) - Service level with higher shares got less resources unexpectedly.%s '
+                           f'Runtime per service level group:\n  {runtime_per_sl_group_str}')
+
             if load_high_enough is None and node_cpu is None:
                 WorkloadPrioritisationEvent.RatioValidationEvent(
                     message=message % " Maybe due to not enough high load.",
@@ -327,12 +354,9 @@ class SlaUtils:
     @staticmethod
     def clean_auth(entities_list_of_dict):
         for entity in entities_list_of_dict:
-            service_level = entity.get('service_level')
-            role = entity.get('role')
-            user = entity.get('user')
-            if user:
-                user.drop()
-            if role:
-                role.drop()
-            if service_level:
-                service_level.drop()
+            for auth in [entity.get('user'), entity.get('role'), entity.get('service_level')]:
+                if auth:
+                    try:
+                        auth.drop()
+                    except Exception as error:  # pylint: disable=broad-except
+                        LOGGER.error("Failed to drop '%s'. Error: %s", auth.name, error)

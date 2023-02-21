@@ -99,6 +99,7 @@ from sdcm.utils.k8s import (
 )
 from sdcm.utils.k8s.chaos_mesh import MemoryStressExperiment, IOFaultChaosExperiment, DiskError
 from sdcm.utils.ldap import SASLAUTHD_AUTHENTICATOR
+from sdcm.utils.loader_utils import DEFAULT_USER, DEFAULT_USER_PASSWORD
 from sdcm.utils.replication_strategy_utils import temporary_replication_strategy_setter, \
     NetworkTopologyReplicationStrategy, ReplicationStrategy, SimpleReplicationStrategy
 from sdcm.utils.sstable.load_utils import SstableLoadUtils
@@ -108,7 +109,7 @@ from sdcm.wait import wait_for
 from test_lib.compaction import CompactionStrategy, get_compaction_strategy, get_compaction_random_additional_params, \
     get_gc_mode, GcMode
 from test_lib.cql_types import CQLTypeBuilder
-from test_lib.sla import ServiceLevel
+from test_lib.sla import ServiceLevel, MAX_ALLOWED_SERVICE_LEVELS
 
 LOGGER = logging.getLogger(__name__)
 # NOTE: following lock is needed in the K8S multitenant case
@@ -1638,8 +1639,14 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                         clean_enospc_on_node(target_node=node, sleep_time=sleep_time)
 
     def disrupt_remove_service_level_while_load(self):
+        if not self.cluster.nodes[0].is_enterprise:
+            raise UnsupportedNemesis("SLA feature is only supported by Scylla Enterprise")
+
+        if not self.cluster.params.get('authenticator'):
+            raise UnsupportedNemesis("SLA feature can't work without authenticator")
+
         if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+            raise UnsupportedNemesis('This nemesis is supported with Service Level and role are pre-defined')
 
         role = self.tester.roles[0]
 
@@ -3875,87 +3882,116 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             if node_added:
                 self.cluster.decommission(new_node, soft_timeout=MAX_TIME_WAIT_FOR_DECOMMISSION)
 
-    def get_test_data_set_size(self):
-        write_cmds = self.tester.params.get("prepare_write_cmd") or []
+    def get_cassandra_stress_write_cmds(self):
+        write_cmds = self.tester.params.get("prepare_write_cmd")
+        if not write_cmds:
+            return None
+
         if not isinstance(write_cmds, list):
             write_cmds = [write_cmds]
 
-        stress_cmd = [cmd for cmd in write_cmds if " n=" in cmd]
-        self.log.debug("Stress command to get test dataset size: %s", stress_cmd)
-        return self.tester.get_data_set_size(stress_cmd[0]) if stress_cmd else None
+        stress_cmds = [cmd for cmd in write_cmds if " profile=" not in cmd and " n=" in cmd]
+        if not stress_cmds:
+            return None
+
+        return stress_cmds
+
+    def get_cassandra_stress_definition(self, stress_cmds, default_data_set_size=5000000):
+        stress_cmd = stress_cmds[0]
+        self.log.debug("Stress commands to get cassandra_stress_definition: %s", stress_cmd)
+        column_definition = self.tester.get_c_s_column_definition(cs_cmd=stress_cmd)
+        # Set small amount rows 5000000 when can not recognize a real dataset size, suppose that this amount should be
+        # inserted in any case
+        data_set_size = self.tester.get_data_set_size(stress_cmd) or default_data_set_size
+
+        self.log.debug("Dataset size for nemesis: %s", data_set_size)
+        self.log.debug("Cassandra-stress column definition for nemesis: %s", column_definition)
+        return column_definition, data_set_size
 
     def disrupt_sla_increase_shares_during_load(self):
         if not self.cluster.nodes[0].is_enterprise:
             raise UnsupportedNemesis("SLA feature is only supported by Scylla Enterprise")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        if not self.cluster.params.get('authenticator'):
+            raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
-        # inserted in any case
-        dataset_size = self.get_test_data_set_size() or 50000000
-        self.log.debug("Dataset size for nemesis: %s", dataset_size)
+        if not (stress_cmds := self.get_cassandra_stress_write_cmds()):
+            raise UnsupportedNemesis("SLA nemesis needs cassandra-stress default table 'keyspace1.standard1' is created"
+                                     " and prefilled")
+
+        column_definition, dataset_size = self.get_cassandra_stress_definition(stress_cmds)
 
         prometheus_stats = PrometheusDBStats(host=self.monitoring_set.nodes[0].external_address)
         sla_tests = SlaTests()
-        error_events = sla_tests.test_increase_shares_during_load(tester=self.tester, prometheus_stats=prometheus_stats,
-                                                                  num_of_partitions=dataset_size)
+        error_events = sla_tests.test_increase_shares_during_load(tester=self.tester,
+                                                                  prometheus_stats=prometheus_stats,
+                                                                  num_of_partitions=dataset_size,
+                                                                  cassandra_stress_column_definition=column_definition)
         self.format_error_for_sla_test_and_raise(error_events=error_events)
 
     def disrupt_sla_decrease_shares_during_load(self):
         if not self.cluster.nodes[0].is_enterprise:
             raise UnsupportedNemesis("SLA feature is only supported by Scylla Enterprise")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        if not self.cluster.params.get('authenticator'):
+            raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
-        # inserted in any case
-        dataset_size = self.get_test_data_set_size() or 50000000
-        self.log.debug("Dataset size for nemesis: %s", dataset_size)
+        if not (stress_cmds := self.get_cassandra_stress_write_cmds()):
+            raise UnsupportedNemesis("SLA nemesis needs cassandra-stress default table 'keyspace1.standard1' is created"
+                                     " and prefilled")
+
+        column_definition, dataset_size = self.get_cassandra_stress_definition(stress_cmds)
 
         prometheus_stats = PrometheusDBStats(host=self.monitoring_set.nodes[0].external_address)
         sla_tests = SlaTests()
-        error_events = sla_tests.test_decrease_shares_during_load(tester=self.tester, prometheus_stats=prometheus_stats,
-                                                                  num_of_partitions=dataset_size)
+        error_events = sla_tests.test_decrease_shares_during_load(tester=self.tester,
+                                                                  prometheus_stats=prometheus_stats,
+                                                                  num_of_partitions=dataset_size,
+                                                                  cassandra_stress_column_definition=column_definition)
         self.format_error_for_sla_test_and_raise(error_events=error_events)
 
     def disrupt_replace_service_level_using_detach_during_load(self):
         if not self.cluster.nodes[0].is_enterprise:
             raise UnsupportedNemesis("SLA feature is only supported by Scylla Enterprise")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        if not self.cluster.params.get('authenticator'):
+            raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
-        # inserted in any case
-        dataset_size = self.get_test_data_set_size() or 50000000
-        self.log.debug("Dataset size for nemesis: %s", dataset_size)
+        if not (stress_cmds := self.get_cassandra_stress_write_cmds()):
+            raise UnsupportedNemesis("SLA nemesis needs cassandra-stress default table 'keyspace1.standard1' is created"
+                                     " and prefilled")
+
+        column_definition, dataset_size = self.get_cassandra_stress_definition(stress_cmds)
 
         prometheus_stats = PrometheusDBStats(host=self.monitoring_set.nodes[0].external_address)
         sla_tests = SlaTests()
-        error_events = sla_tests.test_replace_service_level_using_detach_during_load(tester=self.tester,
-                                                                                     prometheus_stats=prometheus_stats,
-                                                                                     num_of_partitions=dataset_size)
+        error_events = sla_tests.test_replace_service_level_using_detach_during_load(
+            tester=self.tester,
+            prometheus_stats=prometheus_stats,
+            num_of_partitions=dataset_size,
+            cassandra_stress_column_definition=column_definition)
         self.format_error_for_sla_test_and_raise(error_events=error_events)
 
     def disrupt_replace_service_level_using_drop_during_load(self):
         if not self.cluster.nodes[0].is_enterprise:
             raise UnsupportedNemesis("SLA feature is only supported by Scylla Enterprise")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        if not self.cluster.params.get('authenticator'):
+            raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
-        # inserted in any case
-        dataset_size = self.get_test_data_set_size() or 50000000
-        self.log.debug("Dataset size for nemesis: %s", dataset_size)
+        if not (stress_cmds := self.get_cassandra_stress_write_cmds()):
+            raise UnsupportedNemesis("SLA nemesis needs cassandra-stress default table 'keyspace1.standard1' is created"
+                                     " and prefilled")
+
+        column_definition, dataset_size = self.get_cassandra_stress_definition(stress_cmds)
 
         prometheus_stats = PrometheusDBStats(host=self.monitoring_set.nodes[0].external_address)
         sla_tests = SlaTests()
-        error_events = sla_tests.test_replace_service_level_using_drop_during_load(tester=self.tester,
-                                                                                   prometheus_stats=prometheus_stats,
-                                                                                   num_of_partitions=dataset_size)
+        error_events = sla_tests.test_replace_service_level_using_drop_during_load(
+            tester=self.tester,
+            prometheus_stats=prometheus_stats,
+            num_of_partitions=dataset_size,
+            cassandra_stress_column_definition=column_definition)
 
         self.format_error_for_sla_test_and_raise(error_events=error_events)
 
@@ -3963,41 +3999,51 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not self.cluster.nodes[0].is_enterprise:
             raise UnsupportedNemesis("SLA feature is only supported by Scylla Enterprise")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        if not self.cluster.params.get('authenticator'):
+            raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
-        # inserted in any case
-        dataset_size = self.get_test_data_set_size() or 50000000
-        self.log.debug("Dataset size for nemesis: %s", dataset_size)
+        if not (stress_cmds := self.get_cassandra_stress_write_cmds()):
+            raise UnsupportedNemesis("SLA nemesis needs cassandra-stress default table 'keyspace1.standard1' is created"
+                                     " and prefilled")
+
+        column_definition, dataset_size = self.get_cassandra_stress_definition(stress_cmds)
 
         prometheus_stats = PrometheusDBStats(host=self.monitoring_set.nodes[0].external_address)
         sla_tests = SlaTests()
         error_events = sla_tests.test_increase_shares_by_attach_another_sl_during_load(
             tester=self.tester,
             prometheus_stats=prometheus_stats,
-            num_of_partitions=dataset_size)
+            num_of_partitions=dataset_size,
+            cassandra_stress_column_definition=column_definition)
 
         self.format_error_for_sla_test_and_raise(error_events=error_events)
 
-    def disrupt_seven_sl_with_max_shares_during_load(self):
+    def disrupt_maximum_allowed_sls_with_max_shares_during_load(self):
         if not self.cluster.nodes[0].is_enterprise:
             raise UnsupportedNemesis("SLA feature is only supported by Scylla Enterprise")
 
-        if not getattr(self.tester, "roles", None):
-            raise UnsupportedNemesis('This nemesis is supported for SLA test only')
+        if not self.cluster.params.get('authenticator'):
+            raise UnsupportedNemesis("SLA feature can't work without authenticator")
 
-        # Set small amount rows 50000000 when can not recognize a real dataset size, suppose that this amount should be
-        # inserted in any case
-        dataset_size = self.get_test_data_set_size() or 50000000
-        self.log.debug("Dataset size for nemesis: %s", dataset_size)
+        if not (stress_cmds := self.get_cassandra_stress_write_cmds()):
+            raise UnsupportedNemesis("SLA nemesis needs cassandra-stress default table 'keyspace1.standard1' is created"
+                                     " and prefilled")
+
+        column_definition, dataset_size = self.get_cassandra_stress_definition(stress_cmds)
 
         prometheus_stats = PrometheusDBStats(host=self.monitoring_set.nodes[0].external_address)
         sla_tests = SlaTests()
-        error_events = sla_tests.test_seven_sl_with_max_shares_during_load(
+        with self.cluster.cql_connection_patient(node=self.cluster.nodes[0],
+                                                 user=DEFAULT_USER,
+                                                 password=DEFAULT_USER_PASSWORD) as session:
+            created_service_levels = len(ServiceLevel(session=session, name="dummy").list_all_service_levels())
+
+        error_events = sla_tests.test_maximum_allowed_sls_with_max_shares_during_load(
             tester=self.tester,
             prometheus_stats=prometheus_stats,
-            num_of_partitions=dataset_size)
+            num_of_partitions=dataset_size,
+            cassandra_stress_column_definition=column_definition,
+            service_levels_amount=MAX_ALLOWED_SERVICE_LEVELS-created_service_levels)
 
         self.format_error_for_sla_test_and_raise(error_events=error_events)
 
@@ -5353,12 +5399,12 @@ class SlaIncreaseSharesByAttachAnotherSlDuringLoad(Nemesis):
         self.disrupt_increase_shares_by_attach_another_sl_during_load()
 
 
-class SlaSevenSlWithMaxSharesDuringLoad(Nemesis):
+class SlaMaximumAllowedSlsWithMaxSharesDuringLoad(Nemesis):
     disruptive = False
     sla = True
 
     def disrupt(self):
-        self.disrupt_seven_sl_with_max_shares_during_load()
+        self.disrupt_maximum_allowed_sls_with_max_shares_during_load()
 
 
 class SlaNemeses(Nemesis):
