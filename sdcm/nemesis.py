@@ -1654,8 +1654,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
 
         role = self.tester.roles[0]
 
-        with self.cluster.cql_connection_patient(node=self.cluster.nodes[0], user=self.tester.DEFAULT_USER,
-                                                 password=self.tester.DEFAULT_USER_PASSWORD) as session:
+        with self.cluster.cql_connection_patient(node=self.cluster.nodes[0], user=DEFAULT_USER,
+                                                 password=DEFAULT_USER_PASSWORD) as session:
             self.log.info("Drop service level %s", role.attached_service_level_name)
             removed_shares = role.attached_service_level.shares
             role.attached_service_level.session = session
@@ -4455,7 +4455,6 @@ class RefreshBigMonkey(Nemesis):
 
 class RemoveServiceLevelMonkey(Nemesis):
     disruptive = True
-    sla = True
 
     def disrupt(self):
         self.disrupt_remove_service_level_while_load()

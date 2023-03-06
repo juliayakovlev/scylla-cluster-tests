@@ -12,11 +12,11 @@ n_db_nodes: 6
 n_loaders: 2
 n_monitor_nodes: 1
 seeds_num: 3
-round_robin: true
+#round_robin: true
 
 sla: true
 
-instance_type_db: 'i3.4xlarge'
+instance_type_db: 'i3.2xlarge'
 
 run_fullscan: ['{"mode": "table_and_aggregate", "ks_cf": "keyspace1.standard1", "interval": 5}']
 nemesis_class_name: 'SlaNemeses'
