@@ -14,6 +14,8 @@ n_monitor_nodes: 1
 seeds_num: 3
 round_robin: true
 
+sla: true
+
 instance_type_db: 'i3.4xlarge'
 
 run_fullscan: ['{"mode": "table_and_aggregate", "ks_cf": "keyspace1.standard1", "interval": 5}']
