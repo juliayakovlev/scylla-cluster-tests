@@ -17,9 +17,12 @@ from sdcm.remote import shell_script_cmd
 
 
 def install_client_certificate(remoter):
-    if remoter.run('ls /etc/scylla/ssl_conf', ignore_status=True).ok:
+    if remoter.run('ls /etc/scylla/ssl_conf/client', ignore_status=True).ok:
         return
     remoter.send_files(src='./data_dir/ssl_conf', dst='/tmp/')  # pylint: disable=not-callable
+    # if remoter.run('ls /etc/scylla/ssl_conf', ignore_status=True).ok:
+    #     return
+    # remoter.send_files(src='./data_dir/ssl_conf', dst='/tmp/')  # pylint: disable=not-callable
     setup_script = dedent("""
         mkdir -p ~/.cassandra/
         cp /tmp/ssl_conf/client/cqlshrc ~/.cassandra/

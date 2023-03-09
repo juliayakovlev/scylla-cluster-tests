@@ -8,6 +8,7 @@ n_loaders: 3
 n_monitor_nodes: 1
 
 instance_type_db: 'i3.8xlarge'
+use_prepared_loaders: true
 
 nemesis_class_name: 'SisyphusMonkey'
 nemesis_seed: '018'
