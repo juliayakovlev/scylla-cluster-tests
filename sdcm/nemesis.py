@@ -5859,7 +5859,8 @@ class DeleteOverlappingRowRangesMonkey(Nemesis):
 class ChaosMonkey(Nemesis):
 
     def disrupt(self):
-        self.call_random_disrupt_method()
+        self.call_random_disrupt_method(disrupt_methods=['disrupt_mgmt_repair_cli', 'disrupt_grow_shrink_cluster',
+                                                         'disrupt_destroy_data_then_rebuild'])
 
 
 class CategoricalMonkey(Nemesis):

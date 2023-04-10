@@ -16,7 +16,7 @@ instance_type_db: 'i4i.4xlarge'
 # Seems the c5.xlarge type is small for this load - I receive OOM on 2 loaders
 instance_type_loader: 'c6i.2xlarge'
 
-nemesis_class_name: 'NodeTerminateAndReplace'
+nemesis_class_name: 'GrowShrinkClusterNemesis'
 nemesis_seed: '027'
 nemesis_interval: 5
 nemesis_add_node_cnt: 3
