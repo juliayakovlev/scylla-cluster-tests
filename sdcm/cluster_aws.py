@@ -339,19 +339,38 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
                 ec2_user_data += ' --bootstrap false '
         return ec2_user_data
 
-    def _create_or_find_instances(self, count, ec2_user_data, dc_idx, az_idx=0):
-        if self.nodes:
-            return self._create_instances(count, ec2_user_data, dc_idx, az_idx)
+    def _create_or_find_instances(self, count, ec2_user_data, dc_idx, az_idx):
         if self.test_config.REUSE_CLUSTER:
             instances = self._get_instances(dc_idx)
             assert len(instances) == count, f"Found {len(instances)} instances, while expect {count}"
             self.log.info('Found instances to be reused from test [%s] = %s', self.test_config.REUSE_CLUSTER, instances)
             return instances
-        if instances := self._get_instances(dc_idx):
-            self.log.info('Found provisioned instances = %s', instances)
-            return instances
-        self.log.info('Found no provisioned instances. Provision them.')
-        return self._create_instances(count, ec2_user_data, dc_idx, az_idx)
+
+        # pylint: disable=protected-access
+        already_in_use = [node._instance.instance_id for node in self.nodes if node.dc_idx == dc_idx]
+        unused_on_cloud = [inst for inst in self._get_instances(dc_idx) if inst.instance_id not in already_in_use]
+        if len(unused_on_cloud) >= count:
+            self.log.info('Found provisioned instances = %s', unused_on_cloud[:count])
+            return unused_on_cloud[:count]
+
+        newly_provisioned = self._create_instances(count - len(unused_on_cloud), ec2_user_data, dc_idx, az_idx=az_idx)
+        self.log.info('Found provisioned instances = %s, and provisioned additional instances = %s ', unused_on_cloud,
+                      newly_provisioned)
+        return unused_on_cloud + newly_provisioned
+
+        # region_names = self.params.get('region_name')
+        # if [node for node in self.nodes if node.region == region_names[dc_idx]]:
+        #     return self._create_instances(count, ec2_user_data, dc_idx)
+        # if self.test_config.REUSE_CLUSTER:
+        #     instances = self._get_instances(dc_idx)
+        #     assert len(instances) == count, f"Found {len(instances)} instances, while expect {count}"
+        #     self.log.info('Found instances to be reused from test [%s] = %s', self.test_config.REUSE_CLUSTER, instances)
+        #     return instances
+        # if instances := self._get_instances(dc_idx):
+        #     self.log.info('Found provisioned instances = %s', instances)
+        #     return instances
+        # self.log.info('Found no provisioned instances. Provision them.')
+        # return self._create_instances(count, ec2_user_data, dc_idx)
 
     # pylint: disable=too-many-arguments
     def add_nodes(self, count, ec2_user_data='', dc_idx=0, rack=0, enable_auto_bootstrap=False):
