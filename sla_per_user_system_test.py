@@ -388,6 +388,8 @@ class SlaPerUserTest(LongevityTest):
                                                                stress_duration_min=stress_duration)
                      ]
 
+        time.sleep(10)
+
         try:
             # Let to cassandra-stress to warm up the load before get statistics (add 60 sec to start time)
             start_time = time.time() + 60
