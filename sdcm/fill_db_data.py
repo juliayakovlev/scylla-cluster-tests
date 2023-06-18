@@ -3054,7 +3054,7 @@ class FillDatabaseData(ClusterTester):
     def cql_truncate_simple_tables(session, rows):
         truncate_query = 'TRUNCATE TABLE truncate_table%d'
         for i in range(rows):
-            session.execute(truncate_query % i)
+            session.execute(truncate_query % i, timeout=240)
 
     def fill_db_data_for_truncate_test(self, insert_rows):
         # Prepare connection and keyspace
