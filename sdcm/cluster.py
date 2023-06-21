@@ -1595,6 +1595,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
                 self.parent_cluster.proposed_scylla_yaml,
                 self.proposed_scylla_yaml
             )
+            # scylla_yml.audit = "none"
 
         self.process_scylla_args(append_scylla_args)
 

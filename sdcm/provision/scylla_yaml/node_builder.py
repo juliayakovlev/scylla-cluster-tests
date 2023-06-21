@@ -99,3 +99,7 @@ class ScyllaYamlNodeAttrBuilder(ScyllaYamlAttrBuilderBase):
         if self._is_ip_ssh_connections_ipv6:
             return self._ipv6_ip_address
         return "0.0.0.0"
+
+    @property
+    def audit(self) -> Optional[str]:
+        return "none"
