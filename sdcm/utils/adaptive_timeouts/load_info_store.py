@@ -122,6 +122,9 @@ class NodeLoadInfoService:
     def shards_count(self) -> int:
         return len([key for key in self._get_scylla_metrics() if key.startswith('scylla_lsa_free_space')])
 
+    def scylla_scheduler_shares(self) -> list:
+        return [key for key in self._get_scylla_metrics() if key.startswith('scylla_scheduler_shares')]
+
     @cached_property
     def read_bandwidth_mb(self) -> float:
         """based on io_properties.yaml in MB/s """

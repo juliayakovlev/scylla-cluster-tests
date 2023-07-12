@@ -13,6 +13,7 @@
 #
 # Copyright (c) 2022 ScyllaDB
 from longevity_test import LongevityTest
+from sdcm.sla.libs.sla_utils import SlaUtils
 from sdcm.utils import loader_utils
 from test_lib.sla import create_sla_auth
 
@@ -32,11 +33,20 @@ class LongevitySlaTest(LongevityTest, loader_utils.LoaderUtilsMixin):
             # Add index (shares position in the self.service_level_shares list) to role and service level names to do
             # it unique and prevent failure when try to create role/SL with same name
             for index, shares in enumerate(self.service_level_shares):
-                self.roles.append(create_sla_auth(session=session, shares=shares, index=index))
+                self.roles.append(create_sla_auth(session=session, shares=shares, index=str(index)))
+
+            self.log.info("Main SLs have been created")
 
             if self.params.get("run_fullscan"):
                 self.fullscan_role = create_sla_auth(session=session, shares=self.FULLSCAN_SERVICE_LEVEL_SHARES,
-                                                     index=0)
+                                                     index="0")
+                self.log.info("Full scan SL has been created")
+
+        # Wait for all SLs are propagated to all nodes
+        for role in self.roles + [self.fullscan_role]:
+            # self.fullscan_role may be None if "run_fullscan" is not defined
+            if role:
+                SlaUtils().wait_for_service_level_propagated(cluster=self.db_cluster, service_level=role.attached_service_level)
 
         self.add_sla_credentials_to_stress_cmds(workload_names=['prepare_write_cmd', 'stress_cmd', 'stress_read_cmd'],
                                                 roles=self.roles, params=self.params,
