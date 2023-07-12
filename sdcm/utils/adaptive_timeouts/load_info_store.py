@@ -122,8 +122,26 @@ class NodeLoadInfoService:
     def shards_count(self) -> int:
         return len([key for key in self._get_scylla_metrics() if key.startswith('scylla_lsa_free_space')])
 
-    def scylla_scheduler_shares(self) -> list:
-        return [key for key in self._get_scylla_metrics() if key.startswith('scylla_scheduler_shares')]
+    def scylla_scheduler_shares(self) -> dict:
+        """
+        output example:
+        {"sl:sl200": 200, "sl:default": 1000}
+        """
+        scheduler_regex = re.compile(r".*group=\"(?P<group>.*)\",.*}")
+        scheduler_group_shares = {}
+        all_metrix = self._get_metrics(port=9180)
+        for key, value in all_metrix.items():
+            if key.startswith('scylla_scheduler_shares'):
+                try:
+                    match = scheduler_regex.match(key)
+                    try:
+                        scheduler_group_shares[match.groups()[0]] = int(value.split(".")[0])
+                    except ValueError as details:
+                        LOGGER.error("Failed to to convert value %s to integer. Error: %s", value, details)
+                except AttributeError as error:
+                    LOGGER.error("Failed to match metric: %s. Error: %s", key, error)
+
+        return scheduler_group_shares
 
     @cached_property
     def read_bandwidth_mb(self) -> float:
