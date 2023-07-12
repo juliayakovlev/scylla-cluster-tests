@@ -13,6 +13,7 @@
 import logging
 import time
 import uuid
+from collections import defaultdict
 from datetime import datetime
 from functools import cached_property
 import re
@@ -124,18 +125,17 @@ class NodeLoadInfoService:
 
     def scylla_scheduler_shares(self) -> dict:
         """
-        output example:
-        {"sl:sl200": 200, "sl:default": 1000}
+        output example: {"sl:sl200": [200, 200], "sl:default": [1000, 1000]}
         """
-        scheduler_regex = re.compile(r".*group=\"(?P<group>.*)\",.*}")
-        scheduler_group_shares = {}
+        scheduler_regex = re.compile(r".*group=\"(?P<group>.*)\",shard=\"(?P<shard>\d+)")
+        scheduler_group_shares = defaultdict(list)
         all_metrix = self._get_metrics(port=9180)
         for key, value in all_metrix.items():
             if key.startswith('scylla_scheduler_shares'):
                 try:
                     match = scheduler_regex.match(key)
                     try:
-                        scheduler_group_shares[match.groups()[0]] = int(value.split(".")[0])
+                        scheduler_group_shares[match.groups()[0]].append(int(value.split(".")[0]))
                     except ValueError as details:
                         LOGGER.error("Failed to to convert value %s to integer. Error: %s", value, details)
                 except AttributeError as error:

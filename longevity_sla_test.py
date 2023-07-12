@@ -35,12 +35,9 @@ class LongevitySlaTest(LongevityTest, loader_utils.LoaderUtilsMixin):
             for index, shares in enumerate(self.service_level_shares):
                 self.roles.append(create_sla_auth(session=session, shares=shares, index=str(index)))
 
-            self.log.info("Main SLs have been created")
-
             if self.params.get("run_fullscan"):
                 self.fullscan_role = create_sla_auth(session=session, shares=self.FULLSCAN_SERVICE_LEVEL_SHARES,
                                                      index="0")
-                self.log.info("Full scan SL has been created")
 
         # Wait for all SLs are propagated to all nodes
         for role in self.roles + [self.fullscan_role]:

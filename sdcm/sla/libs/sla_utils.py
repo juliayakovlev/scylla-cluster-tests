@@ -387,9 +387,10 @@ class SlaUtils:
                         LOGGER.error("Failed to drop '%s'. Error: %s", auth.name, error)
 
     @staticmethod
-    def get_scylla_shares_per_scheduler_group(node, scheduler_group_name: str = None) -> int:
+    def get_scylla_shares_per_scheduler_group(node, scheduler_group_name: str = None) -> list:
         node_info_service = NodeLoadInfoServices().get(node)
         scheduler_groups = node_info_service.scylla_scheduler_shares()
+        # scheduler_groups example: {"sl:sl200": [200, 200], "sl:default": [1000, 1000]}
         LOGGER.debug("Found scheduler groups: %s", scheduler_groups)
         if scheduler_group_name is None:
             return scheduler_groups
@@ -409,7 +410,16 @@ class SlaUtils:
                 raise SchedulerGroupNotFound(f"Scheduler groups for {service_level.name} service levels is not created on the "
                                              f"node '{node.name}'")
 
-            if scheduler_shares != service_level.shares:
+            if len(scheduler_shares) != node.scylla_shards:
+                raise WrongServiceLevelShares(f"Expected that scheduler group is created on every Scylla shard for {service_level.name} "
+                                              f"service level but actually it was created on {len(scheduler_shares)} shards: "
+                                              f"{scheduler_shares} on the node '{node.name}'")
+
+            if len(set(scheduler_shares)) > 1:
+                raise WrongServiceLevelShares(f"Expected same shares on every shard for {service_level.name} service level but "
+                                              f"actually the shares on the every shard are: {scheduler_shares} on the node '{node.name}'")
+
+            if scheduler_shares[0] != service_level.shares:
                 raise WrongServiceLevelShares(f"Expected {service_level.name} service level with '{service_level.shares}' shares "
                                               f"but actually it is {scheduler_shares} shares on the node '{node.name}'")
             LOGGER.debug("Finish wait for service level propagated for service_level %s on the node '%s'",
