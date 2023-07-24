@@ -84,7 +84,7 @@ from sdcm.sct_events.group_common_events import (ignore_alternator_client_errors
 from sdcm.sct_events.health import DataValidatorEvent
 from sdcm.sct_events.loaders import CassandraStressLogEvent
 from sdcm.sct_events.nemesis import DisruptionEvent
-from sdcm.sct_events.system import InfoEvent
+from sdcm.sct_events.system import InfoEvent, TestStepEvent
 from sdcm.sla.sla_tests import SlaTests
 from sdcm.utils.aws_kms import AwsKms
 from sdcm.utils import cdc
@@ -2135,6 +2135,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if not exclude_partitions:
             exclude_partitions = []
 
+        # In the large partition tests part of partitions are used for data validation. We do not want to delete a data in those partitions
+        # to prevent scylla-bench command failure
         max_partitions_in_test_table = self.cluster.params.get('max_partitions_in_test_table')
         partition_range_with_data_validation = self.cluster.params.get('partition_range_with_data_validation')
 
@@ -2143,6 +2145,9 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             start_range = int(partition_range_splitted[0])
             end_range = int(partition_range_splitted[1])
             exclude_partitions.extend(i for i in range(start_range, end_range))
+            if partitions_amount == max_partitions_in_test_table:
+                partitions_amount -= end_range - start_range
+        self.log.debug(f"Partitions amount for delete: {partitions_amount}")
 
         partitions_for_delete = defaultdict(list)
         with self.cluster.cql_connection_patient(self.target_node, connect_timeout=300) as session:
@@ -2238,7 +2243,12 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     def delete_half_partition(self, ks_cf):
         self.log.debug('Delete by range - half of partition')
 
-        partitions_for_delete = self.choose_partitions_for_delete(10, ks_cf, with_clustering_key_data=True)
+        # Select half of partitions because we need available partitions in the next step: delete_range_in_few_partitions module
+        partitions_amount = self.cluster.params.get('max_partitions_in_test_table') / 2
+        self.log.debug('delete_half_partition.partitions_amount: %s', partitions_amount)
+        partitions_for_delete = self.choose_partitions_for_delete(partitions_amount=partitions_amount,
+                                                                  ks_cf=ks_cf,
+                                                                  with_clustering_key_data=True)
         if not partitions_for_delete:
             raise UnsupportedNemesis('Not found partitions for delete. Nemesis can not be run')
 
@@ -2251,7 +2261,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     def delete_by_range_using_timestamp(self, ks_cf: str):
         self.log.debug('Delete by range - using timestamp')
 
-        partitions_for_delete = self.choose_partitions_for_delete(10, ks_cf, with_clustering_key_data=False)
+        partitions_for_delete = self.choose_partitions_for_delete(self.cluster.params.get('max_partitions_in_test_table'), ks_cf,
+                                                                  with_clustering_key_data=False)
         if not partitions_for_delete:
             message = "Unable to find partitions to delete"
             self.log.error(message)
@@ -2276,7 +2287,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.log.debug('Delete same range in the few partitions')
 
         partitions_for_exclude = list(partitions_for_exclude_dict.keys())
-        partitions_for_delete = self.choose_partitions_for_delete(10, ks_cf, with_clustering_key_data=True,
+        partitions_for_delete = self.choose_partitions_for_delete(self.cluster.params.get('max_partitions_in_test_table'), ks_cf,
+                                                                  with_clustering_key_data=True,
                                                                   exclude_partitions=partitions_for_exclude)
         if not partitions_for_delete:
             raise UnsupportedNemesis('Not found partitions for delete. Nemesis can not be run')
@@ -2327,7 +2339,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         """
         self.verify_initial_inputs_for_delete_nemesis()
         ks_cf = 'scylla_bench.test'
-        partitions_for_delete = self.choose_partitions_for_delete(10, ks_cf, with_clustering_key_data=True)
+        partitions_for_delete = self.choose_partitions_for_delete(self.cluster.params.get('max_partitions_in_test_table'), ks_cf,
+                                                                  with_clustering_key_data=True)
         if not partitions_for_delete:
             self.log.error('No partitions for delete found!')
             raise UnsupportedNemesis("DeleteOverlappingRowRangesMonkey: No partitions for delete found!")
@@ -4098,6 +4111,34 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         InfoEvent(message='Starting shrink disruption').publish()
         self._shrink_cluster(rack=None)
         InfoEvent(message='Starting shrink disruption').publish()
+
+    def disrupt_mv_delete_range(self):
+        """
+        Cover issue https://github.com/scylladb/scylla-enterprise/issues/3072
+        """
+        # This nemesis can be run in large partition test. The validation for that is in every "disrupt_delete_" nemesis by calling
+        # self.verify_initial_inputs_for_delete_nemesis()
+        with TestStepEvent(step="delete range") as delete_step:
+            try:
+                run_func = random.choice([self.disrupt_delete_10_full_partitions,  self.disrupt_delete_overlapping_row_ranges,
+                                          self.disrupt_delete_by_rows_range])
+                run_func()
+            except Exception as error:
+                delete_step.add_error([str(error)])
+                delete_step.full_traceback = traceback.format_exc()
+                delete_step.severity = Severity.ERROR
+                raise
+
+        with TestStepEvent(step="delete range and repair") as repair_step:
+            try:
+                self._destroy_data_and_restart_scylla(
+                    keyspaces_for_destroy=["scylla_bench"], sstables_to_destroy_perc=random.randint(50, 90))
+                self.repair_nodetool_repair()
+            except Exception as error:
+                repair_step.add_error([str(error)])
+                repair_step.full_traceback = traceback.format_exc()
+                repair_step.severity = Severity.ERROR
+                raise
 
     def _k8s_disrupt_memory_stress(self):
         """Uses chaos-mesh experiment based on https://github.com/chaos-mesh/memStress"""
@@ -5923,6 +5964,15 @@ class NemesisSequence(Nemesis):
 
     def disrupt(self):
         self.disrupt_run_unique_sequence()
+
+
+class MaterializedViewDeleteRange(Nemesis):
+    disruptive = True
+    networking = False
+    run_with_gemini = False
+
+    def disrupt(self):
+        self.disrupt_mv_delete_range()
 
 
 class TerminateAndRemoveNodeMonkey(Nemesis):

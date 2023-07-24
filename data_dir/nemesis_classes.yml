@@ -27,6 +27,7 @@
 - HardRebootNodeMonkey
 - LoadAndStreamMonkey
 - MajorCompactionMonkey
+- MaterializedViewDeleteRange
 - MemoryStressMonkey
 - MgmtBackup
 - MgmtBackupSpecificKeyspaces

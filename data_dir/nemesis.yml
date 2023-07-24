@@ -124,6 +124,10 @@
   - disruptive = True
   - kubernetes = True
   - free_tier_set = True
+- disrupt_mv_delete_range:
+  - disruptive = True
+  - networking = False
+  - run_with_gemini = False
 - disrupt_network_block:
   - disruptive = True
   - networking = True
