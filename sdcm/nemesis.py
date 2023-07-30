@@ -134,6 +134,10 @@ EXCLUSIVE_NEMESIS_NAMES = (
 )
 
 
+class KillNemesis(Exception):
+    """Exception that would be raised, when a nemesis thread is killed at teardown of the test"""
+
+
 class NoFilesFoundToDestroy(Exception):
     pass
 
@@ -395,20 +399,23 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if interval:
             self.interval = interval * 60
         self.log.info('Interval: %s s', self.interval)
-        while not self.termination_event.is_set():
-            if cycles_count == 0:
-                self.log.info("Defined number of Nemesis cycles completed. Stopping Nemesis thread.")
-                break
-            cycles_count -= 1
-            cur_interval = self.interval
-            try:
-                self.disrupt()
-            except (UnsupportedNemesis, MethodVersionNotFound) as exc:
-                self.log.warning("Skipping unsupported nemesis: %s", exc)
-                cur_interval = 0
-            finally:
-                self.unset_current_running_nemesis(self.target_node)
-                self.termination_event.wait(timeout=cur_interval)
+        try:
+            while not self.termination_event.is_set():
+                if cycles_count == 0:
+                    self.log.info("Defined number of Nemesis cycles completed. Stopping Nemesis thread.")
+                    break
+                cycles_count -= 1
+                cur_interval = self.interval
+                try:
+                    self.disrupt()
+                except (UnsupportedNemesis, MethodVersionNotFound) as exc:
+                    self.log.warning("Skipping unsupported nemesis: %s", exc)
+                    cur_interval = 0
+                finally:
+                    self.unset_current_running_nemesis(self.target_node)
+                    self.termination_event.wait(timeout=cur_interval)
+        except KillNemesis:
+            self.log.debug("Nemesis thread [%s] stopped by KillNemesis", id(self))
 
     def report(self):
         if self.duration_list:
@@ -4164,8 +4171,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         ks_tables_with_cdc = self.cluster.get_all_tables_with_cdc(self.target_node)
         if not ks_tables_with_cdc:
             self.log.warning("CDC is not enabled on any table. Skipping")
-            UnsupportedNemesis("CDC is not enabled on any table. Skipping")
-            return
+            raise UnsupportedNemesis("CDC is not enabled on any table. Skipping")
+
         ks, table = random.choice(ks_tables_with_cdc).split(".")
         self._run_cdc_stressor_tool(ks, table)
 
@@ -4820,8 +4827,8 @@ def disrupt_method_wrapper(method, is_exclusive=False):  # pylint: disable=too-m
                                                          method_name=method_name, start_time=start_time)
                 try:
                     result = method(*args[1:], **kwargs)
-                except (UnsupportedNemesis, MethodVersionNotFound) as exp:
-                    skip_reason = str(exp)
+                except (UnsupportedNemesis, MethodVersionNotFound, KillNemesis) as exp:
+                    skip_reason = "Killed" if isinstance(exp, KillNemesis) else str(exp)
                     log_info.update({'subtype': 'skipped', 'skip_reason': skip_reason})
                     nemesis_event.skip(skip_reason=skip_reason)
                     raise
