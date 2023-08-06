@@ -39,4 +39,4 @@ authenticator_user: cassandra
 authenticator_password: cassandra
 authorizer: 'CassandraAuthorizer'
 
-service_level_shares: [200, 800]
+service_level_shares: [100, 400]
