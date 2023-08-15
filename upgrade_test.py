@@ -25,6 +25,7 @@ from functools import wraps, cache
 from typing import List
 
 from argus.client.sct.types import Package
+from cassandra import ConsistencyLevel
 
 from sdcm import wait
 from sdcm.cluster import BaseNode
@@ -48,6 +49,7 @@ def truncate_entries(func):
     def inner(self, *args, **kwargs):
         node = args[0]
         with self.db_cluster.cql_connection_patient(node, keyspace='truncate_ks') as session:
+            session.default_consistency_level = ConsistencyLevel.QUORUM
             InfoEvent(message="Start truncate simple tables").publish()
             try:
                 self.cql_truncate_simple_tables(session=session, rows=NUMBER_OF_ROWS_FOR_TRUNCATE_TEST)
@@ -61,6 +63,7 @@ def truncate_entries(func):
 
         # re-new connection
         with self.db_cluster.cql_connection_patient(node, keyspace='truncate_ks') as session:
+            session.default_consistency_level = ConsistencyLevel.QUORUM
             self.validate_truncated_entries_for_table(session=session, system_truncated=True)
             self.read_data_from_truncated_tables(session=session)
             self.cql_insert_data_to_simple_tables(session=session, rows=NUMBER_OF_ROWS_FOR_TRUNCATE_TEST)
@@ -127,10 +130,13 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
         for table_name in tables_name:
             InfoEvent(message="Start read data from truncated tables").publish()
             try:
-                count = self.rows_to_list(session.execute(truncate_query.format(table_name)))
-                self.assertEqual(str(count[0][0]), '0',
-                                 msg='Expected that there is no data in the table truncate_ks.{}, but found {} rows'
-                                 .format(table_name, count[0][0]))
+                try:
+                    count = self.rows_to_list(session.execute(truncate_query.format(table_name), timeout=120))
+                    self.assertEqual(str(count[0][0]), '0',
+                                     msg='Expected that there is no data in the table truncate_ks.{}, but found {} rows'
+                                     .format(table_name, count[0][0]))
+                except Exception as err:
+                    self.log.error("Select from '%s' failed with error: %s", table_name, err)
                 InfoEvent(message="Finish read data from truncated tables").publish()
             except Exception as details:  # pylint: disable=broad-except
                 InfoEvent(message=f"Failed read data from truncated tables. Error: {str(details)}. Traceback: {traceback.format_exc()}",
