@@ -5725,6 +5725,42 @@ class SlaNemeses(Nemesis):
         self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list)
 
 
+class SLAIssue3298Monkey(Nemesis):
+    """
+    Selected number of nemesis that is focused on scylla-operator functionality
+    """
+    disruptive = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.disrupt_methods_list = [
+            'disrupt_replace_service_level_using_drop_during_load',
+            'disrupt_replace_service_level_using_drop_during_load',
+            'disrupt_sla_increase_shares_during_load',
+            'disrupt_increase_shares_by_attach_another_sl_during_load',
+        ]
+
+    def disrupt(self):
+        self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list, predefined_sequence=True)
+
+
+class SLADropMainSlIssueMonkey(Nemesis):
+    """
+    Selected number of nemesis that is focused on scylla-operator functionality
+    """
+    disruptive = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.disrupt_methods_list = [
+            'disrupt_remove_service_level_while_load',
+            'disrupt_sla_increase_shares_during_load',
+        ]
+
+    def disrupt(self):
+        self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list, predefined_sequence=True)
+
+
 class CreateIndexNemesis(Nemesis):
 
     disruptive = False

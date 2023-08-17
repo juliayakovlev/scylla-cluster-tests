@@ -18,7 +18,7 @@ class Steps(SlaUtils):
     def run_stress_and_validate_scheduler_runtime_during_load(self, tester, read_cmds, prometheus_stats, read_roles,
                                                               stress_queue, sleep=600):
         # Wait for server levels will be propagated to all nodes
-        time.sleep(15)
+        time.sleep(120)
         # pylint: disable=not-context-manager
         with TestStepEvent(step="Run stress command and validate scheduler runtime during load") as wp_event:
             try:
@@ -114,7 +114,7 @@ class Steps(SlaUtils):
 
                 # Workaround for issue https://github.com/scylladb/scylla-enterprise/issues/2572
                 if restart_scylla:
-                    time.sleep(30)
+                    time.sleep(120)
                     nodes_for_restart = [node for node in tester.db_cluster.nodes if node.jmx_up() and node.db_up()
                                          and not node.running_nemesis]
                     tester.db_cluster.restart_binary_protocol(nodes=nodes_for_restart)

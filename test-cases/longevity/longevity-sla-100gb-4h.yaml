@@ -23,8 +23,9 @@ instance_type_db: 'i3.2xlarge'
 instance_type_loader: 'c5.2xlarge'
 
 run_fullscan: ['{"mode": "table_and_aggregate", "ks_cf": "keyspace1.standard1", "interval": 5}']
-nemesis_class_name: 'SlaNemeses'
+nemesis_class_name: 'SLAIssue3298Monkey'
 nemesis_interval: 5
+#nemesis_seed: '2'
 nemesis_filter_seeds: false
 nemesis_during_prepare: false
 
