@@ -6223,12 +6223,31 @@ class SlaIncreaseSharesByAttachAnotherSlDuringLoad(Nemesis):
         self.disrupt_increase_shares_by_attach_another_sl_during_load()
 
 
-class SlaMaximumAllowedSlsWithMaxSharesDuringLoad(Nemesis):
-    disruptive = False
-    sla = True
+class SLAIssue948Monkey(Nemesis):
+    """
+    Selected number of nemesis that is focused on scylla-operator functionality
+    """
+    disruptive = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.disrupt_methods_list = [
+            'disrupt_increase_shares_by_attach_another_sl_during_load',
+            'disrupt_sla_increase_shares_during_load',
+            'disrupt_replace_service_level_using_drop_during_load',
+            'disrupt_replace_service_level_using_drop_during_load',
+        ]
 
     def disrupt(self):
-        self.disrupt_maximum_allowed_sls_with_max_shares_during_load()
+        self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list, predefined_sequence=True)
+
+
+# class SlaMaximumAllowedSlsWithMaxSharesDuringLoad(Nemesis):
+#     disruptive = False
+#     sla = True
+#
+#     def disrupt(self):
+#         self.disrupt_maximum_allowed_sls_with_max_shares_during_load()
 
 
 class SlaNemeses(Nemesis):
