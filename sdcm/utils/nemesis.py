@@ -111,7 +111,6 @@ class NemesisJobGenerator:
         pipeline_files = []
         for cls in self.nemesis_class_list:
             additional_configs = config.NEMESIS_REQUIRED_ADDITIONAL_CONFIGS.get(cls, [])
-            additional_params = config.NEMESIS_ADDITIONAL_PIPELINE_PARAMS.get(cls, {})
             config_name = [
                 str(self.nemesis_test_config_dir / f"{self.base_job}-nemesis.yaml"),
                 str(self.nemesis_test_config_dir / f"{cls}.yaml"),
@@ -123,7 +122,6 @@ class NemesisJobGenerator:
                     "nemesis_longevity_config": config_name,
                     "backend": self.backend,
                     "region": self.BACKEND_TO_REGION.get(self.backend, "eu-west-1"),
-                    "additional_params": additional_params,
                 })
             job_path = self.base_nemesis_job_dir / job_file_name
             with job_path.open("w") as file:

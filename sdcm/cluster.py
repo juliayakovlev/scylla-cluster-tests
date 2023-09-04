@@ -236,8 +236,8 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
     GOSSIP_STATUSES_FILTER_OUT = ['LEFT',    # in case the node was decommissioned
                                   'removed',  # in case the node was removed by nodetool removenode
                                   'BOOT',    # node during boot and not exists in the cluster yet and they will remain
-                                             # in the gossipinfo 3 days.
-                                             # It's expected behaviour and we won't send the error in this case
+                                  # in the gossipinfo 3 days.
+                                  # It's expected behaviour and we won't send the error in this case
                                   'shutdown'  # when node was removed it may take more time to update the gossip info
                                   ]
 
@@ -296,6 +296,11 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
 
         self._kernel_version = None
         self._uuid = None
+        self.scylla_network_configuration = None
+
+    @property
+    def network_interfaces(self):
+        raise NotImplementedError()
 
     def init(self) -> None:
         if self.logdir:
@@ -729,6 +734,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
 
     @property
     def public_ip_address(self) -> Optional[str]:
+        # Primary network interface public IP
         if self._public_ip_address_cached is None:
             self._public_ip_address_cached = self._get_public_ip_address()
         return self._public_ip_address_cached
@@ -750,6 +756,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
 
     @property
     def private_ip_address(self) -> Optional[str]:
+        # Primary network interface private IP
         if self._private_ip_address_cached is None:
             self._private_ip_address_cached = self._get_private_ip_address()
         return self._private_ip_address_cached
@@ -763,6 +770,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
 
     @property
     def ipv6_ip_address(self) -> Optional[str]:
+        # Primary network interface public IPv6
         if self._ipv6_ip_address_cached is None:
             self._ipv6_ip_address_cached = self._get_ipv6_ip_address()
         return self._ipv6_ip_address_cached
@@ -786,18 +794,26 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             time.sleep(1)
             _, private_ips = self._refresh_instance_state()
 
+    def refresh_network_interfaces_info(self):
+        raise NotImplementedError()
+
     def _refresh_instance_state(self):
         raise NotImplementedError()
 
     @cached_property
     def cql_address(self):
+        # TODO: when new network configuration will be supported by all backends, take `cql_address` function from
+        #  `sdcm.cluster_aws.AWSNode.cql_address`, move it here and remove from all cluster modules
         if self.test_config.IP_SSH_CONNECTIONS == 'public':
             return self.external_address
         with self.remote_scylla_yaml() as scylla_yaml:
-            return scylla_yaml.broadcast_rpc_address if scylla_yaml.broadcast_rpc_address else self.ip_address
+            cql_address = scylla_yaml.broadcast_rpc_address if scylla_yaml.broadcast_rpc_address else self.ip_address
+            return cql_address
 
     @property
     def ip_address(self):
+        # TODO: when new network configuration will be supported by all backends, take `ip_address` function from
+        #  `sdcm.cluster_aws.AWSNode.ip_address`, move it here and remove from all cluster modules
         if self.test_config.IP_SSH_CONNECTIONS == "ipv6":
             return self.ipv6_ip_address
         elif self.test_config.INTRA_NODE_COMM_PUBLIC:
@@ -807,6 +823,8 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
 
     @property
     def external_address(self):
+        # TODO: when new network configuration will be supported by all backends, take `external_address` function from
+        #  `sdcm.cluster_aws.AWSNode.external_address`, move it here and remove from all cluster modules
         """
         the communication address for usage between the test and the nodes
         :return:
@@ -924,6 +942,8 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
         return AlertSilencer(self._alert_manager, alert_name, duration, start, end)
 
     def __str__(self):
+        # TODO: when new network_configuration will be supported by all backends, copy this function from sdcm.cluster_aws.AWSNode.__str__
+        #  to here
         return 'Node %s [%s | %s%s] (seed: %s)' % (
             self.name,
             self.public_ip_address,
@@ -5615,6 +5635,10 @@ class LocalNode(BaseNode):
         super().__init__(name=name, parent_cluster=parent_cluster, ssh_login_info=ssh_login_info,
                          base_logdir=base_logdir, node_prefix=node_prefix, dc_idx=dc_idx, rack=rack)
 
+    @property
+    def network_interfaces(self):
+        raise NotImplementedError()
+
     def _init_port_mapping(self):
         pass
 
@@ -5659,4 +5683,8 @@ class LocalK8SHostNode(LocalNode):
 
     @property
     def public_dns_name(self) -> str:
+        raise NotImplementedError()
+
+    @property
+    def network_interfaces(self):
         raise NotImplementedError()
