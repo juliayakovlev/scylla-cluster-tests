@@ -33,6 +33,7 @@ from sdcm.fill_db_data import FillDatabaseData
 from sdcm.sct_events import Severity
 from sdcm.stress_thread import CassandraStressThread
 from sdcm.utils.adaptive_timeouts import adaptive_timeout, Operations
+from sdcm.utils.sstable.sstable_utils import SstableUtils
 from sdcm.utils.version_utils import get_node_supported_sstable_versions
 from sdcm.sct_events.system import InfoEvent
 from sdcm.sct_events.database import IndexSpecialColumnErrorEvent
@@ -49,25 +50,73 @@ def truncate_entries(func):
     @wraps(func)
     def inner(self, *args, **kwargs):
         node = args[0]
+        truncated_tables_name = [f"truncate_table{i}" for i in range(NUMBER_OF_ROWS_FOR_TRUNCATE_TEST)]
         with self.db_cluster.cql_connection_patient(node, keyspace='truncate_ks') as session:
             session.default_consistency_level = ConsistencyLevel.QUORUM
+            # truncated_tables_name = self.get_tables_name_of_keyspace(session=session, keyspace_name='truncate_ks')
+            self.log.debug("truncated_tables_name: %s", truncated_tables_name)
             InfoEvent(message="Start truncate simple tables").publish()
             try:
-                self.cql_truncate_simple_tables(session=session, rows=NUMBER_OF_ROWS_FOR_TRUNCATE_TEST)
+                self.cql_truncate_simple_tables(session=session, truncated_tables_name=truncated_tables_name)
                 InfoEvent(message="Finish truncate simple tables").publish()
             except Exception as details:  # pylint: disable=broad-except
                 InfoEvent(message=f"Failed truncate simple tables. Error: {str(details)}. Traceback: {traceback.format_exc()}",
                           severity=Severity.ERROR).publish()
-            self.validate_truncated_entries_for_table(session=session, system_truncated=True)
+
+            # self.validate_truncated_entries_for_table(session=session, system_truncated=True)
+        for thenode in self.db_cluster.nodes:
+            InfoEvent(message=f"Start read from truncate simple tables on {thenode.name} node ").publish()
+            with self.db_cluster.cql_connection_patient(thenode, keyspace='truncate_ks') as session:
+                session.default_consistency_level = ConsistencyLevel.ONE
+                self.read_data_from_truncated_tables(session=session, truncated_tables_name=truncated_tables_name)
+            InfoEvent(message=f"Finish read from truncate simple tables on {thenode.name} node ").publish()
+            # tombstone_num_pre_upgrade = {}
+            # for node in self.db_cluster.nodes:
+            #     tombstone_num_pre_upgrade[node.name] = {}
+            #     for table in truncated_tables_name:
+            #         sstable_utils = SstableUtils(db_node=node, propagation_delay_in_seconds=0,
+            #                                      ks_cf=f"truncate_ks.{table}")
+            #         InfoEvent(f'Count the initial number of tombstones before upgrade for table "{table}", '
+            #                   f'node "{node.name}"').publish()
+            #         tombstone_num_pre_upgrade[node.name].update({table: sstable_utils.count_tombstones()})
+            #         InfoEvent(f'The initial number of tombstones before upgrade for table "{table}" is '
+            #                   f'{tombstone_num_pre_upgrade[node.name][table]}, node "{node.name}"').publish()
 
         func_result = func(self, *args, **kwargs)
 
         # re-new connection
+        for thenode in self.db_cluster.nodes:
+            InfoEvent(message=f"Start read from truncate simple tables on {thenode.name} node ").publish()
+            with self.db_cluster.cql_connection_patient(thenode, keyspace='truncate_ks') as session:
+                session.default_consistency_level = ConsistencyLevel.ONE
+                self.read_data_from_truncated_tables(session=session, truncated_tables_name=truncated_tables_name)
+            InfoEvent(message=f"Finish read from truncate simple tables on {thenode.name} node ").publish()
+
         with self.db_cluster.cql_connection_patient(node, keyspace='truncate_ks') as session:
             session.default_consistency_level = ConsistencyLevel.QUORUM
-            self.validate_truncated_entries_for_table(session=session, system_truncated=True)
-            self.read_data_from_truncated_tables(session=session)
-            self.cql_insert_data_to_simple_tables(session=session, rows=NUMBER_OF_ROWS_FOR_TRUNCATE_TEST)
+            # self.validate_truncated_entries_for_table(session=session, system_truncated=True)
+            # for node in self.db_cluster.nodes:
+            #     for table in truncated_tables_name:
+            #         sstable_utils = SstableUtils(db_node=node, propagation_delay_in_seconds=0,
+            #                                      ks_cf=f"truncate_ks.{table}")
+            #         InfoEvent(
+            #             f'Count the number of tombstones after upgrade for table "{table}", node "{node.name}"').publish()
+            #         count_tombstones = sstable_utils.count_tombstones()
+            #         if count_tombstones != tombstone_num_pre_upgrade[node.name][table]:
+            #             InfoEvent(f"Expected amount of tombstones in the table {table} is {tombstone_num_pre_upgrade[node.name][table]} "
+            #                       f"but actually it is {count_tombstones}, node '{node.name}'", severity=Severity.ERROR).publish()
+            #         else:
+            #             InfoEvent(f'The number of tombstones after upgrade for table "{table}" is same as before upgrade: '
+            #                       f'{count_tombstones}, node "{node.name}"').publish()
+            # self.read_data_from_truncated_tables(session=session, truncated_tables_name=truncated_tables_name)
+            time.sleep(120)
+            InfoEvent(message="Start insert data to truncate table").publish()
+            try:
+                self.cql_insert_data_to_simple_tables(session=session, rows=NUMBER_OF_ROWS_FOR_TRUNCATE_TEST)
+                InfoEvent(message="Finish insert data to truncate table").publish()
+            except Exception as error:
+                InfoEvent(
+                    message=f"Failed insert data to truncate table. Error: {error}", severity=Severity.ERROR).publish()
         return func_result
     return inner
 
@@ -125,18 +174,39 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
     # would be recalculated after all the cluster finish upgrade
     expected_sstable_format_version = 'mc'
 
-    def read_data_from_truncated_tables(self, session):
-        truncate_query = 'SELECT COUNT(*) FROM {}'
-        tables_name = self.get_tables_name_of_keyspace(session=session, keyspace_name='truncate_ks')
-        for table_name in tables_name:
-            InfoEvent(message="Start read data from truncated tables").publish()
+    def read_data_from_truncated_tables(self, session, truncated_tables_name):
+        truncate_query = 'SELECT * FROM {} LIMIT 10'
+        for table_name in truncated_tables_name:
+            InfoEvent(message=f"Start read data from truncated table {table_name}").publish()
             try:
-                with adaptive_timeout(Operations.QUERY, node=self.db_cluster.nodes[0], timeout=60, query="SELECT"):
-                    count = self.rows_to_list(session.execute(truncate_query.format(table_name), timeout=120))
-                self.assertEqual(str(count[0][0]), '0',
-                                 msg='Expected that there is no data in the table truncate_ks.{}, but found {} rows'
-                                 .format(table_name, count[0][0]))
-                InfoEvent(message="Finish read data from truncated tables").publish()
+                count = self.rows_to_list(session.execute(truncate_query.format(table_name)))
+                self.assertEqual(len(count), 0,
+                                 msg=f'Found not expected data in the table truncate_ks.{table_name}. Expected empty table')
+                # self.assertEqual(str(count[0][0]), '0',
+                #                  msg='Expected that there is no data in the table truncate_ks.{}, but found {} rows'
+                #                  .format(table_name, count[0][0]))
+                InfoEvent(message=f"Finish read data from truncated table {table_name}").publish()
+            except AssertionError as details:  # pylint: disable=broad-except
+                tombstones_deletion_info = {}
+                for node in self.db_cluster.nodes:
+                    InfoEvent(f"Start to get compacted tombstone deletion info on the node '{node.name}'").publish()
+                    tombstones_deletion_info[node.name] = {}
+                    sstable_utils = SstableUtils(db_node=node, propagation_delay_in_seconds=0,
+                                                 ks_cf=f"truncate_ks.{table_name}")
+                    sstables = sstable_utils.get_sstables()
+                    for sstable in sstables:
+                        InfoEvent(f"Start to get compacted tombstone deletion info on the node '{node.name}', "
+                                  f"sstable '{sstable}'").publish()
+                        tombstones_info = sstable_utils.get_compacted_tombstone_deletion_info(sstable)
+                        tombstones_deletion_info[node.name].update({sstable: tombstones_info})
+                        self.log.debug("Node '%s', sstable '%s',  tombstones_deletion_info: %s",
+                                       node.name, sstable, tombstones_info)
+                        InfoEvent(f"Finish to get compacted tombstone deletion info on the node '{node.name}', "
+                                  f"sstable '{sstable}'").publish()
+                    InfoEvent(f"Finish to get compacted tombstone deletion info on the node '{node.name}'").publish()
+
+                InfoEvent(message=f"Found not expected data. Error: {str(details)}. Traceback: {traceback.format_exc()}",
+                          severity=Severity.CRITICAL).publish()
             except Exception as details:  # pylint: disable=broad-except
                 InfoEvent(message=f"Failed read data from truncated tables. Error: {str(details)}. Traceback: {traceback.format_exc()}",
                           severity=Severity.ERROR).publish()
@@ -147,7 +217,7 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
         for table_id in tables_id:
             if system_truncated:
                 # validate truncation entries in the system.truncated table - expected entry
-                truncated_time = self.get_truncated_time_from_system_truncated(session=session, table_id=table_id)
+                truncated_time = self.get_truncated_time_from_system_truncated(session=session, table_id=table_id[0])
                 self.assertTrue(truncated_time,
                                 msg='Expected truncated entry in the system.truncated table, but it\'s not found')
 

@@ -103,7 +103,7 @@ ElasticsearchEvent: ERROR
 SpotTerminationEvent: CRITICAL
 AwsKmsEvent: ERROR
 ScyllaRepoEvent: WARNING
-InfoEvent: ERROR
+InfoEvent: CRITICAL
 ThreadFailedEvent: ERROR
 CoreDumpEvent: ERROR
 TestResultEvent: ERROR

@@ -2669,12 +2669,13 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
     def get_tables_id_of_keyspace(self, session, keyspace_name):
         query = "SELECT id FROM system_schema.tables WHERE keyspace_name='{}' ".format(keyspace_name)
         table_id = self.rows_to_list(session.execute(query))
-        return table_id[0]
+        return table_id
 
-    def get_tables_name_of_keyspace(self, session, keyspace_name):
+    @staticmethod
+    def get_tables_name_of_keyspace(session, keyspace_name):
         query = "SELECT table_name FROM system_schema.tables WHERE keyspace_name='{}' ".format(keyspace_name)
-        table_id = self.rows_to_list(session.execute(query))
-        return table_id[0]
+        tables_name = list(session.execute(query))
+        return tables_name
 
     def get_truncated_time_from_system_local(self, session):  # pylint: disable=invalid-name
         query = "SELECT truncated_at FROM system.local"

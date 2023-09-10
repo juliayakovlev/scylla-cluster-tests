@@ -3047,24 +3047,17 @@ class FillDatabaseData(ClusterTester):
 
     def cql_insert_data_to_simple_tables(self, session, rows):  # pylint: disable=invalid-name
         def insert_query():
-            with adaptive_timeout(Operations.QUERY, node=self.db_cluster.nodes[0], timeout=60, query="INSERT"):
-                session.execute(
-                    f'INSERT INTO truncate_table{i} (my_id, col1, value) VALUES ( {k}, {k}, {k})', timeout=120)
+            return f'INSERT INTO truncate_table{i} (my_id, col1, value) VALUES ( {k}, {k}, {k})'
+        LOGGER.info("Start insert data to simple table")
+        for i in range(rows):  # pylint: disable=unused-variable
+            for k in range(100):  # pylint: disable=unused-variable
+                session.execute(insert_query())
 
-        for i in range(rows):
-            for k in range(100):
-                # Catch the exception as we do not want to stop the test on this failure
-                try:
-                    insert_query()
-                except Exception as details:  # pylint: disable=broad-except
-                    InfoEvent(message=f"Failed insert data to simple tables. Error: {str(details)}. Traceback: {traceback.format_exc()}",
-                              severity=Severity.ERROR).publish()
-
-    def cql_truncate_simple_tables(self, session, rows):
-        truncate_query = 'TRUNCATE TABLE truncate_table%d'
-        for i in range(rows):
-            with adaptive_timeout(Operations.QUERY, node=self.db_cluster.nodes[0], timeout=60, query="TRUNCATE"):
-                session.execute(truncate_query % i, timeout=300)
+    @staticmethod
+    def cql_truncate_simple_tables(session, truncated_tables_name):
+        truncate_query = 'TRUNCATE TABLE %s'
+        for table_name in truncated_tables_name:
+            session.execute(truncate_query % table_name)
 
     def fill_db_data_for_truncate_test(self, insert_rows):
         # Prepare connection and keyspace
