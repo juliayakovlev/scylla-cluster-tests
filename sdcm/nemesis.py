@@ -4303,10 +4303,17 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                     f"-mode cql3 native compression=lz4 -rate threads=5 -pop seq=1..10000 -log interval=5"
         write_thread = self.tester.run_stress_thread(stress_cmd=write_cmd, round_robin=True, stop_test_on_failure=False)
         self.tester.verify_stress_thread(cs_thread_pool=write_thread)
-        self._verify_multi_dc_keyspace_data(consistency_level="ALL")
+        self._verify_multi_dc_keyspace_data(datacenters=datacenters, consistency_level="ALL")
 
-    def _verify_multi_dc_keyspace_data(self, consistency_level: str = "ALL"):
+    def _verify_multi_dc_keyspace_data(self, datacenters: List[str] | None, consistency_level: str = "ALL"):
+        replication_strategy = ""
+        if datacenters and len(datacenters) > 1:
+            if random.choice([True, False]):
+                replication_strategy = f"replication(strategy=NetworkTopologyStrategy,{datacenters[0]}=3,{datacenters[1]}=1) "
+                InfoEvent(message='Verify multi DC keyspace data with replication').publish()
+
         read_cmd = f"cassandra-stress read no-warmup cl={consistency_level} n=10000 -schema 'keyspace=keyspace_new_dc " \
+                   f"{replication_strategy}" \
                    f"compression=LZ4Compressor' -mode cql3 native compression=lz4 -rate threads=5 " \
                    f"-pop seq=1..10000 -log interval=5"
         read_thread = self.tester.run_stress_thread(stress_cmd=read_cmd, round_robin=True, stop_test_on_failure=False)
@@ -4374,7 +4381,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             node_added = False
             datacenters = list(self.tester.db_cluster.get_nodetool_status().keys())
             assert not [dc for dc in datacenters if dc.endswith("_nemesis_dc")], "new datacenter was not unregistered"
-            self._verify_multi_dc_keyspace_data(consistency_level="QUORUM")
+            self._verify_multi_dc_keyspace_data(datacenters=None, consistency_level="QUORUM")
         finally:
             with self.cluster.cql_connection_patient(node) as session:
                 session.execute('DROP KEYSPACE IF EXISTS keyspace_new_dc')
