@@ -102,6 +102,11 @@ def call(Map pipelineParams) {
                             wrap([$class: 'BuildUser']) {
                                 dir('scylla-cluster-tests') {
                                     checkout scm
+                                    dir("scylla-qa-internal") {
+                                        git(url: 'git@github.com:scylladb/scylla-qa-internal.git',
+                                            credentialsId:'b8a774da-0e46-4c91-9f74-09caebaea261',
+                                            branch: 'master')
+                                    }
                                     ArrayList base_versions_list = params.base_versions.contains('.') ? params.base_versions.split('\\,') : []
                                     supportedVersions = supportedUpgradeFromVersions(
                                         base_versions_list,
@@ -139,6 +144,11 @@ def call(Map pipelineParams) {
                                                         wrap([$class: 'BuildUser']) {
                                                             dir('scylla-cluster-tests') {
                                                                 checkout scm
+                                                                dir("scylla-qa-internal") {
+                                                                    git(url: 'git@github.com:scylladb/scylla-qa-internal.git',
+                                                                        credentialsId:'b8a774da-0e46-4c91-9f74-09caebaea261',
+                                                                        branch: 'master')
+                                                                }
                                                             }
                                                         }
                                                     }
