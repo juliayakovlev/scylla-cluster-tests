@@ -117,8 +117,9 @@ class LoaderUtilsMixin:
 
         return stress_queue
 
-    def run_cs_user_profiles(self, cs_profiles: str | int, stress_queue: list = None):
+    def run_cs_user_profiles(self, cs_profiles: str | int, duration: str = None, stress_queue: list = None):  # pylint: disable=too-many-locals
         stress_queue = stress_queue or []
+        stress_cmds = []
         if not isinstance(cs_profiles, list):
             cs_profiles = [cs_profiles]
         round_robin = self.params.get('round_robin')
@@ -129,13 +130,21 @@ class LoaderUtilsMixin:
             with open(cs_profile, encoding="utf-8") as file:
                 content = file.readlines()
                 for cmd in [line.lstrip('#').strip() for line in content if line.find('cassandra-stress') > 0]:
-                    stress_cmd = (cmd.format(profile_dst))
+                    stress_cmd = (cmd.format(profile_dst)) if duration is None else (cmd.format(profile_dst, duration))
                     params = {'stress_cmd': stress_cmd, 'profile': cs_profile, 'round_robin': round_robin}
                     stress_params = dict(params)
+                    user = self.params.get('authenticator_user')
+                    password = self.params.get('authenticator_password')
+                    if user and password and 'user=' not in stress_cmd:
+                        # put the credentials into the right place into -mode section
+                        stress_cmd = re.sub(
+                            r'(-mode.*?)-', r'\1 user={} password={} -'.format(user, password), stress_cmd)
+
                     self.log.debug('stress cmd: {}'.format(stress_cmd))
+                    stress_cmds.append(stress_cmd)
                     stress_queue.append(self.run_stress_thread(**stress_params))
 
-        return stress_queue
+        return stress_queue, stress_cmds
 
     def run_stress_and_verify_threads(self, params=None):
         stress_queue = []

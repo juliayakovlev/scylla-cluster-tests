@@ -31,6 +31,7 @@ from sdcm.cluster import BaseNode
 from sdcm.fill_db_data import FillDatabaseData
 from sdcm.sct_events import Severity
 from sdcm.stress_thread import CassandraStressThread
+from sdcm.utils.user_profile import get_profile_content
 from sdcm.utils.version_utils import get_node_supported_sstable_versions
 from sdcm.sct_events.system import InfoEvent
 from sdcm.sct_events.database import IndexSpecialColumnErrorEvent
@@ -316,11 +317,13 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
             InfoEvent(message='upgrade_node - ended to "upgradesstables_if_command_available"').publish()
 
     @truncate_entries
-    @decorate_with_context(ignore_abort_requested_errors)
     # https://github.com/scylladb/scylla/issues/10447#issuecomment-1194155163
     def rollback_node(self, node, upgrade_sstables=True):
-        # pylint: disable=too-many-branches,too-many-statements
+        self._rollback_node(node=node, upgrade_sstables=upgrade_sstables)
 
+    @decorate_with_context(ignore_abort_requested_errors)
+    def _rollback_node(self, node, upgrade_sstables=True):
+        # pylint: disable=too-many-branches,too-many-statements
         InfoEvent(message='Rollbacking a Node').publish()
         result = node.remoter.run('scylla --version')
         orig_ver = result.stdout.strip()
@@ -836,17 +839,30 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
         """
         InfoEvent(message='Running a prepare load for the initial custom data').publish()
         prepare_cs_user_profiles = self.params.get('prepare_cs_user_profiles')
-        stress_before_upgrade = self.run_cs_user_profiles(cs_profiles=prepare_cs_user_profiles)
-        self.verify_stress_thread(cs_thread_pool=stress_before_upgrade)
+        stress_before_upgrade, _ = self.run_cs_user_profiles(cs_profiles=prepare_cs_user_profiles, duration="15m")
+        for queue in stress_before_upgrade:
+            self.verify_stress_thread(cs_thread_pool=queue)
 
         # write workload during entire test
         InfoEvent(message='Starting write workload during entire test').publish()
         cs_user_profiles = self.params.get('cs_user_profiles')
-        entire_write_thread_pool = self.run_cs_user_profiles(cs_profiles=cs_user_profiles)
+        entire_write_thread_pool, stress_cmds = self.run_cs_user_profiles(cs_profiles=cs_user_profiles, duration="340m")
 
         # Let to write_stress_during_entire_test complete the schema changes
-        self.metric_has_data(
-            metric_query='sct_cassandra_stress_write_gauge{type="ops", keyspace="keyspace_entire_test"}', n=10)
+        # TODO: adapt to use sdcm.utils.user_profile.get_keyspace_from_user_profile to get keyspace name
+        # TODO: remove try .. except
+        for stress_cmd in stress_cmds:
+            # _, profile = get_profile_content(stress_cmd)
+            # keyspace_name = profile.get('keyspace')
+            # if not keyspace_name:
+            #     continue
+            keyspace_name = "custom_d1"
+            try:
+                self.metric_has_data(
+                    metric_query='sct_cassandra_stress_write_gauge{type="ops", keyspace="%s"}' % keyspace_name, n=10)
+            except Exception as err:  # pylint: disable=broad-except
+                InfoEvent(
+                    f"Get metrix data for keyspace {keyspace_name} failed with error: {err}", severity=Severity.ERROR).publish()
 
         # generate random order to upgrade
         nodes_num = len(self.db_cluster.nodes)
@@ -862,7 +878,8 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
             # upgrade first node
             self.db_cluster.node_to_upgrade = self.db_cluster.nodes[indexes[0]]
             InfoEvent(message='Upgrade Node %s begin' % self.db_cluster.node_to_upgrade.name).publish()
-            self.upgrade_node(self.db_cluster.node_to_upgrade)
+            # Call "_upgrade_node" to prevent running truncate test
+            self._upgrade_node(self.db_cluster.node_to_upgrade)
             InfoEvent(message='Upgrade Node %s ended' % self.db_cluster.node_to_upgrade.name).publish()
             self.db_cluster.node_to_upgrade.check_node_health()
 
@@ -875,7 +892,8 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
             # upgrade second node
             self.db_cluster.node_to_upgrade = self.db_cluster.nodes[indexes[1]]
             InfoEvent(message='Upgrade Node %s begin' % self.db_cluster.node_to_upgrade.name).publish()
-            self.upgrade_node(self.db_cluster.node_to_upgrade)
+            # Call "_upgrade_node" to prevent running truncate test
+            self._upgrade_node(self.db_cluster.node_to_upgrade)
             InfoEvent(message='Upgrade Node %s ended' % self.db_cluster.node_to_upgrade.name).publish()
             self.db_cluster.node_to_upgrade.check_node_health()
 
@@ -885,7 +903,8 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
             InfoEvent(message='Step3 - Rollback Second Node ').publish()
             # rollback second node
             InfoEvent(message='Rollback Node %s begin' % self.db_cluster.nodes[indexes[1]].name).publish()
-            self.rollback_node(self.db_cluster.nodes[indexes[1]])
+            # Call "_rollback_node" to prevent running truncate test
+            self._rollback_node(self.db_cluster.nodes[indexes[1]])
             InfoEvent(message='Rollback Node %s ended' % self.db_cluster.nodes[indexes[1]].name).publish()
             self.db_cluster.nodes[indexes[1]].check_node_health()
 
@@ -903,7 +922,8 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
             for i in indexes[1:]:
                 self.db_cluster.node_to_upgrade = self.db_cluster.nodes[i]
                 InfoEvent(message='Upgrade Node %s begin' % self.db_cluster.node_to_upgrade.name).publish()
-                self.upgrade_node(self.db_cluster.node_to_upgrade)
+                # Call "_upgrade_node" to prevent running truncate test
+                self._upgrade_node(self.db_cluster.node_to_upgrade)
                 InfoEvent(message='Upgrade Node %s ended' % self.db_cluster.node_to_upgrade.name).publish()
                 self.db_cluster.node_to_upgrade.check_node_health()
                 self.search_for_idx_token_error_after_upgrade(node=self.db_cluster.node_to_upgrade,
@@ -912,7 +932,8 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
         InfoEvent(message='Step6 - Verify stress results after upgrade ').publish()
         InfoEvent(message='Waiting for stress threads to complete after upgrade').publish()
 
-        self.verify_stress_thread(cs_thread_pool=entire_write_thread_pool)
+        for queue in entire_write_thread_pool:
+            self.verify_stress_thread(cs_thread_pool=queue)
 
         InfoEvent(message='Step7 - Upgrade sstables to latest supported version ').publish()
         # figure out what is the last supported sstable version

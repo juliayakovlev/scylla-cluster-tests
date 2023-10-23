@@ -6,26 +6,41 @@ test_duration: 360
 # To be used in keyspace_entire_test:
 cs_duration: '300m'  # TODO: measure new upgrade test duration and adjust this one.
 cs_user_profiles:
-    - scylla-qa-internal/custom_d1/write_stress_during_entire_test.yaml
+    - scylla-qa-internal/custom_d1/rolling_upgrade_dataset.yaml
 # write_stress_during_entire_test: cassandra-stress user no-warmup profile=/tmp/write_stress_during_entire_test.yaml  ops'(insert=1,read=2)' cl=ALL n=5000000 -mode cql3 native -rate threads=1000 -pop seq=1..5000000
 
 # To be used in keyspace_custom_preload:
 prepare_cs_user_profiles:
-    - scylla-qa-internal/custom_d1/stress_before_upgrade.yaml
+    - scylla-qa-internal/custom_d1/rolling_upgrade_dataset.yaml
 #stress_before_upgrade: cassandra-stress user no-warmup profile=/tmp/stress_before_upgrade.yaml  ops'(insert=1)' cl=ALL n=5000000 -mode cql3 native -rate threads=1000 -pop seq=1..5000000
 
 n_db_nodes: 4
-n_loaders: 1
+n_loaders: 2
 n_monitor_nodes: 1
 
 instance_type_db: 'i3.2xlarge'
 
+gce_instance_type_db: 'n2-highmem-8'
+gce_n_local_ssd_disk_db: 4
+gce_pd_ssd_disk_size_db: 1500
+gce_setup_hybrid_raid: true
+
+gce_image_db: 'https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-2004-lts'
+use_preinstalled_scylla: false
+
+scylla_d_overrides_files: [
+  'scylla-qa-internal/custom_d1/workload1/scylla.d/io_properties.yaml',
+#  'scylla-qa-internal/custom_d1/workload1/scylla.d/cpuset.conf',
+  'scylla-qa-internal/custom_d1/workload1/scylla.d/memory.conf',
+  'scylla-qa-internal/custom_d1/workload1/scylla.d/io.conf',
+]
+
 user_prefix: 'rolling-upgrade-custom-d1'
 
-server_encrypt: true
-authenticator: 'PasswordAuthenticator'
-authenticator_user: 'cassandra'
-authenticator_password: 'cassandra'
+#server_encrypt: true
+#authenticator: 'PasswordAuthenticator'
+#authenticator_user: 'cassandra'
+#authenticator_password: 'cassandra'
 
 recover_system_tables: true
 
