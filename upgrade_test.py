@@ -162,10 +162,10 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
 
     @decorate_with_context(ignore_abort_requested_errors)
     # https://github.com/scylladb/scylla/issues/10447#issuecomment-1194155163
-    def _upgrade_node(self, node, upgrade_sstables=True):
+    def _upgrade_node(self, node, upgrade_sstables=True, new_version=None, new_scylla_repo=None):
         # pylint: disable=too-many-branches,too-many-statements
-        new_scylla_repo = self.params.get('new_scylla_repo')
-        new_version = self.params.get('new_version')
+        new_scylla_repo = new_scylla_repo or self.params.get('new_scylla_repo')
+        new_version = new_version or self.params.get('new_version')
         upgrade_node_packages = self.params.get('upgrade_node_packages')
 
         scylla_yaml_updates = {}
@@ -843,10 +843,27 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
         for queue in stress_before_upgrade:
             self.verify_stress_thread(cs_thread_pool=queue)
 
+        new_version = "2022.1.11"
+        new_scylla_repo = \
+            "http://downloads.scylladb.com/unstable/scylla-enterprise/enterprise-2022.1/deb/unified/2023-09-10T15:52:16Z/scylladb-2022.1/" \
+            "scylla.list"
+        InfoEvent(message=f'Starting rolling upgrade test to {new_version}').publish()
+        self._custom_profile_rolling_upgrade(new_version=new_version, new_scylla_repo=new_scylla_repo)
+        InfoEvent(message=f'Finished rolling upgrade test to {new_version}').publish()
+
+        new_version = "2023.1.1"
+        new_scylla_repo = \
+            "https://downloads.scylladb.com/unstable/scylla-enterprise/enterprise-2023.1/deb/unified/2023-09-06T10:08:01Z/" \
+            "scylladb-2023.1/scylla.list"
+        InfoEvent(message=f'Starting rolling upgrade test to {new_version}').publish()
+        self._custom_profile_rolling_upgrade(new_version=new_version, new_scylla_repo=new_scylla_repo)
+        InfoEvent(message=f'Finished rolling upgrade test to {new_version}').publish()
+
+    def _custom_profile_rolling_upgrade(self, new_version=None, new_scylla_repo=None):
         # write workload during entire test
         InfoEvent(message='Starting write workload during entire test').publish()
         cs_user_profiles = self.params.get('cs_user_profiles')
-        entire_write_thread_pool, stress_cmds = self.run_cs_user_profiles(cs_profiles=cs_user_profiles, duration="340m")
+        entire_write_thread_pool, stress_cmds = self.run_cs_user_profiles(cs_profiles=cs_user_profiles, duration="35m")
 
         # Let to write_stress_during_entire_test complete the schema changes
         # TODO: adapt to use sdcm.utils.user_profile.get_keyspace_from_user_profile to get keyspace name
@@ -879,7 +896,8 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
             self.db_cluster.node_to_upgrade = self.db_cluster.nodes[indexes[0]]
             InfoEvent(message='Upgrade Node %s begin' % self.db_cluster.node_to_upgrade.name).publish()
             # Call "_upgrade_node" to prevent running truncate test
-            self._upgrade_node(self.db_cluster.node_to_upgrade)
+            self._upgrade_node(self.db_cluster.node_to_upgrade,
+                               new_version=new_version, new_scylla_repo=new_scylla_repo)
             InfoEvent(message='Upgrade Node %s ended' % self.db_cluster.node_to_upgrade.name).publish()
             self.db_cluster.node_to_upgrade.check_node_health()
 
@@ -893,7 +911,8 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
             self.db_cluster.node_to_upgrade = self.db_cluster.nodes[indexes[1]]
             InfoEvent(message='Upgrade Node %s begin' % self.db_cluster.node_to_upgrade.name).publish()
             # Call "_upgrade_node" to prevent running truncate test
-            self._upgrade_node(self.db_cluster.node_to_upgrade)
+            self._upgrade_node(self.db_cluster.node_to_upgrade,
+                               new_version=new_version, new_scylla_repo=new_scylla_repo)
             InfoEvent(message='Upgrade Node %s ended' % self.db_cluster.node_to_upgrade.name).publish()
             self.db_cluster.node_to_upgrade.check_node_health()
 
@@ -923,7 +942,8 @@ class UpgradeTest(FillDatabaseData, loader_utils.LoaderUtilsMixin):
                 self.db_cluster.node_to_upgrade = self.db_cluster.nodes[i]
                 InfoEvent(message='Upgrade Node %s begin' % self.db_cluster.node_to_upgrade.name).publish()
                 # Call "_upgrade_node" to prevent running truncate test
-                self._upgrade_node(self.db_cluster.node_to_upgrade)
+                self._upgrade_node(self.db_cluster.node_to_upgrade,
+                                   new_version=new_version, new_scylla_repo=new_scylla_repo)
                 InfoEvent(message='Upgrade Node %s ended' % self.db_cluster.node_to_upgrade.name).publish()
                 self.db_cluster.node_to_upgrade.check_node_health()
                 self.search_for_idx_token_error_after_upgrade(node=self.db_cluster.node_to_upgrade,
