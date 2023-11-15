@@ -18,7 +18,7 @@ instance_type_db: 'i3.2xlarge'
 instance_type_loader: 'c5.2xlarge'
 
 run_fullscan: ['{"mode": "random", "ks_cf": "keyspace1.standard1", "interval": 5}'] # 'ks.cf|random, interval(min)'
-nemesis_class_name: 'SlaNemeses:1 SisyphusMonkey:1'
+nemesis_class_name: 'SlaNemeses'
 nemesis_selector: ['!sla']
 nemesis_interval: 5
 nemesis_during_prepare: false

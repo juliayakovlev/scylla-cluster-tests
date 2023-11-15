@@ -114,10 +114,32 @@ class Steps(SlaUtils):
 
                 # Workaround for issue https://github.com/scylladb/scylla-enterprise/issues/2572
                 if restart_scylla:
-                    time.sleep(30)
-                    nodes_for_restart = [node for node in tester.db_cluster.nodes if node.jmx_up() and node.db_up()
-                                         and not node.running_nemesis]
-                    tester.db_cluster.restart_binary_protocol(nodes=nodes_for_restart)
+                    LOGGER.info("===========================================================================")
+                    LOGGER.info("======================SERVICE LEVELS CHANGES===============================")
+                    LOGGER.info("===========================================================================")
+
+                    for node in tester.db_cluster.nodes:
+                        if node.db_up():
+                            node.remoter.run(
+                                "curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json'"
+                                " http://127.0.0.1:10000/service_levels/switch_tenants"
+                            )
+
+                    time.sleep(5 * 60)
+
+                    for node in tester.db_cluster.nodes:
+                        if node.db_up():
+                            result = node.remoter.run(
+                                "curl -X GET --header 'Content-Type: application/json' --header 'Accept: application/json'"
+                                " http://127.0.0.1:10000/service_levels/count_connections"
+                            )
+
+                            connections_map = result.stdout.strip()
+                            LOGGER.info("[NODE %s] %s", node.private_ip_address, connections_map)
+                    # time.sleep(30)
+                    # nodes_for_restart = [node for node in tester.db_cluster.nodes if node.jmx_up() and node.db_up()
+                    #                      and not node.running_nemesis]
+                    # tester.db_cluster.restart_binary_protocol(nodes=nodes_for_restart)
                 # End workaround
 
                 start_time = time.time() + 60
