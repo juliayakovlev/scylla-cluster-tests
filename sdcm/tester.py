@@ -2294,10 +2294,13 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
         mv_columns_str = mv_columns
         if isinstance(mv_columns, list):
             mv_columns_str = ', '.join(c for c in mv_columns)
-
         where_clause = []
-        mv_partition_key = mv_partition_key if isinstance(mv_partition_key, list) else list(mv_partition_key)
-        mv_clustering_key = mv_clustering_key if isinstance(mv_clustering_key, list) else list(mv_clustering_key)
+        mv_partition_key = mv_partition_key if isinstance(mv_partition_key, list) else [mv_partition_key]
+        mv_clustering_key = mv_clustering_key if isinstance(mv_clustering_key, list) else [mv_clustering_key]
+
+        self.log.info("create_materialized_view.mv_partition_key: %s", mv_partition_key)
+        self.log.info("create_materialized_view.mv_clustering_key: %s", mv_clustering_key)
+        self.log.info("create_materialized_view.mv_columns: %s", mv_columns)
 
         for kc in mv_partition_key + mv_clustering_key:  # pylint: disable=invalid-name
             where_clause.append('{} is not null'.format(kc))

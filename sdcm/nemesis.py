@@ -4752,8 +4752,14 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                     with EventsFilter(event_class=DatabaseLogEvent,
                                       regex='.*Error applying view update.*',
                                       extra_time_to_expiration=180):
-                        self.tester.create_materialized_view(ks_name, base_table_name, view_name, [column],
-                                                             primary_key_columns, session,
+                        self.log.info("column is: %s", column)
+                        self.log.info("primary_key_columns is: %s", primary_key_columns)
+                        self.tester.create_materialized_view(ks_name=ks_name,
+                                                             base_table_name=base_table_name,
+                                                             mv_name=view_name,
+                                                             mv_partition_key=[column],
+                                                             mv_clustering_key=primary_key_columns,
+                                                             session=session,
                                                              mv_columns=[column] + primary_key_columns)
                 except Exception as error:  # pylint: disable=broad-except
                     self.log.warning('Failed creating a materialized view: %s', error)

@@ -50,10 +50,12 @@ def get_column_names(session, ks, cf, is_primary_key: bool = False, filter_out_c
                           f" AND {filter_kind}"
                           f" ALLOW FILTERING")
     res_list = list(res)
+    LOGGER.info("res_list: %s", res_list)
     column_names = [row.column_name for row in res_list]
     if filter_out_collections:
         collection_types = ('list', 'set', 'map')
         column_names = [row.column_name for row in res_list if not str(row.type).startswith(collection_types)]
+    LOGGER.info("column_names: %s", column_names)
     return column_names
 
 
