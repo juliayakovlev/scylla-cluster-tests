@@ -51,6 +51,17 @@ class ScyllaNetworkConfiguration:
         return self.listen_address
 
     @property
+    def broadcast_address_ip_type(self):
+        # If multiple network interface is defined on the node, private address in the `nodetool status` is IP that defined in
+        # broadcast_address. Keep this output in correlation with `nodetool status`
+        broadcast_address_config = [
+            conf for conf in self.scylla_network_config if conf["address"] == "broadcast_address"]
+        if broadcast_address_config[0]["ip_type"] == "ipv6":
+            return "ipv6"
+        else:
+            return "public" if broadcast_address_config[0]["public"] else "private"
+
+    @property
     def test_communication(self):
         """
         IP is used to connect from test to DB/monitor instances

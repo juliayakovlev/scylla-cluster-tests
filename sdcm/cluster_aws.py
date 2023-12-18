@@ -432,8 +432,11 @@ class AWSNode(cluster.BaseNode):
     def __str__(self):
         # If multiple network interface is defined on the node, private address in the `nodetool status` is IP that defined in
         # broadcast_address. Keep this output in correlation with `nodetool status`
-        node_private_ip = self.scylla_network_configuration.broadcast_address if self.test_config.IP_SSH_CONNECTIONS == "private" \
-            else self.private_ip_address
+        if self.scylla_network_configuration.broadcast_address_ip_type == "private":
+            node_private_ip = self.scylla_network_configuration.broadcast_address
+        else:
+            node_private_ip = self.private_ip_address
+
         return 'Node %s [%s | %s%s] (seed: %s)' % (
             self.name,
             self.public_ip_address,
