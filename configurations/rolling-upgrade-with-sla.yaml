@@ -11,6 +11,8 @@ upgrade_sstables: false
 n_loaders: 2
 round_robin: true
 
+gce_instance_type_loader: 'c2-standard-16'
+
 user_prefix: 'rolling-upgrade-sla'
 
 service_level_shares: [200, 800]
