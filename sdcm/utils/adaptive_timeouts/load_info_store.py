@@ -89,6 +89,9 @@ class NodeLoadInfoService:
 
     def get_memory_available(self) -> float:
         metrics = self._get_node_exporter_metrics()
+        LOGGER.info("get_memory_available: %s", metrics)
+        LOGGER.info("get_memory_available[node_memory_MemAvailable_bytes]: %s",
+                    metrics.get('node_memory_MemAvailable_bytes'))
         mem_available = float(metrics['node_memory_MemAvailable_bytes'])
         return mem_available
 
