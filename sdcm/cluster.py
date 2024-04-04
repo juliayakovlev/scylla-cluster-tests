@@ -2684,7 +2684,9 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
         nodes_status = {}
         try:
             statuses = self.parent_cluster.get_nodetool_status(verification_node=self)
+            self.log.info("get_nodes_status.statuses: %s", statuses)
             node_ip_map = self.parent_cluster.get_ip_to_node_map()
+            self.log.info("get_nodes_status.node_ip_map: %s", node_ip_map)
             for dc, dc_status in statuses.items():
                 for node_ip, node_properties in dc_status.items():
                     if node := node_ip_map.get(node_ip):
@@ -3286,6 +3288,8 @@ class BaseCluster:  # pylint: disable=too-many-instance-attributes,too-many-publ
     def get_datacenter_name_per_region(self, db_nodes=None):
         datacenter_name_per_region = {}
         for region, nodes in self.nodes_by_region(nodes=db_nodes).items():
+            self.log.info("get_datacenter_name_per_region.region: %s", region)
+            self.log.info("get_datacenter_name_per_region.nodes: %s", nodes)
             if status := nodes[0].get_nodes_status():
                 datacenter_name_per_region[region] = status[nodes[0]]['dc']
             else:
