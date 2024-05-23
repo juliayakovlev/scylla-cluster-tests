@@ -3555,19 +3555,32 @@ class BaseCluster:  # pylint: disable=too-many-instance-attributes,too-many-publ
 
     def get_non_system_ks_cf_list(self, db_node,  # pylint: disable=too-many-arguments
                                   filter_out_table_with_counter=False, filter_out_mv=False, filter_empty_tables=True,
-                                  filter_by_keyspace: list = None) -> List[str]:
+                                  filter_by_keyspace: list = None, filter_out_by_replication_factor: int | None = None) -> List[str]:
         return self.get_any_ks_cf_list(db_node, filter_out_table_with_counter=filter_out_table_with_counter,
                                        filter_out_mv=filter_out_mv, filter_empty_tables=filter_empty_tables,
-                                       filter_out_system=True, filter_out_cdc_log_tables=True, filter_by_keyspace=filter_by_keyspace)
+                                       filter_out_system=True, filter_out_cdc_log_tables=True, filter_by_keyspace=filter_by_keyspace,
+                                       filter_out_by_replication_factor=filter_out_by_replication_factor)
 
-    def get_any_ks_cf_list(self, db_node,  # pylint: disable=too-many-arguments
+    def get_any_ks_cf_list(self, db_node,  # pylint: disable=too-many-arguments,too-many-statements
                            filter_out_table_with_counter=False, filter_out_mv=False, filter_empty_tables=True,
                            filter_out_system=False, filter_out_cdc_log_tables=False,
-                           filter_by_keyspace: list = None) -> List[str]:
+                           filter_by_keyspace: list = None, filter_out_by_replication_factor: int | None = None) -> List[str]:
         regular_column_names = ["keyspace_name", "table_name"]
         materialized_view_column_names = ["keyspace_name", "view_name"]
         regular_table_names, materialized_view_table_names = set(), set()
         where_clause = ""
+        # This filter is usefull when the some
+        if filter_out_by_replication_factor:
+            with self.cql_connection_patient(db_node, connect_timeout=600) as session:
+                result = list(session.execute("select keyspace_name, replication from system_schema.keyspaces"))
+                keyspaces = [row.keyspace_name for row in result
+                             if int(row.replication.get('replication_factor', 0)) != filter_out_by_replication_factor]
+                filter_by_keyspace = [
+                    ks for ks in keyspaces if ks in filter_by_keyspace] if filter_by_keyspace else keyspaces
+
+            if not filter_by_keyspace:
+                return []
+
         if filter_by_keyspace:
             where_clause = ", ".join([f"'{ks}'" for ks in filter_by_keyspace])
             where_clause = f" WHERE keyspace_name in ({where_clause})"

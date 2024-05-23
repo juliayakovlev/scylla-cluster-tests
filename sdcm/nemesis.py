@@ -2491,11 +2491,15 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
              (*) The other available values of 'disabled' / 'immediate' are not tested by
              this nemesis since not applicable to a longevity test.
         """
-        all_ks_cfs = self.cluster.get_non_system_ks_cf_list(db_node=self.target_node)
+        # This nemesis can not be run on table with RF = 1:
+        #   ConfigurationException: tombstone_gc option with mode = repair not supported for table with RF one or local replication strategy
+        # We do not run tests with local strategy ({'class': 'org.apache.cassandra.locator.LocalStrategy'}), so I do not add this filter
+        all_ks_cfs = self.cluster.get_non_system_ks_cf_list(
+            db_node=self.target_node, filter_out_by_replication_factor=1)
 
         if not all_ks_cfs:
             raise UnsupportedNemesis(
-                'Non-system keyspace and table are not found. toggle_table_gc_mode nemesis can\'t run')
+                'Any table with RF > 1 is not found. disrupt_toggle_table_gc_mode nemesis can\'t run')
 
         keyspace_table = random.choice(all_ks_cfs)
         keyspace, table = keyspace_table.split('.')
