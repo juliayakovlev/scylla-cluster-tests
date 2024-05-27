@@ -1487,7 +1487,7 @@ class Collector:  # pylint: disable=too-many-instance-attributes,
         )
 
     def get_aws_ip_address(self, instance):
-        return instance['PublicIpAddress'] if ssh_connection_ip_type(self.params) == 'public' else instance['PrivateIpAddress']
+        return instance['PublicIpAddress'] if ssh_connection_ip_type(self.params) in ('public', 'ipv6') else instance['PrivateIpAddress']
 
     def get_aws_instances_by_testid(self):
         instances = list_instances_aws({"TestId": self.test_id}, running=True)
