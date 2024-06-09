@@ -498,7 +498,7 @@ class LogEvent(Generic[T_log_event], InformationalEvent, abstract=True):
             fmt += " line_number={0.line_number}"
         if self.node is not None:
             fmt += " node={0.node}"
-        if hasattr(self, "known_issue") and self.known_issue:
+        if self.known_issue:
             fmt += " known_issue={0.known_issue}"
         if self.line is not None:
             fmt += "\n{0.line}"
