@@ -21,10 +21,7 @@ class ReplicationStrategy:  # pylint: disable=too-few-public-methods
         # CREATE KEYSPACE scylla_bench WITH replication = {'class': 'org.apache.cassandra.locator.SimpleStrategy',
         # 'replication_factor': '1'} AND durable_writes = true AND tablets = {'enabled': false};
         LOGGER.debug("Analyze replication string '%s'", replication_string)
-        if not (replication_value := re.search(r".*replication[\s]=[\s](\{.*'\d+'\})", replication_string, flags=re.IGNORECASE)):
-            # For syntax: CREATE KEYSPACE scylla_bench WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}
-            replication_value = re.search(
-                r".*replication[\s]=[\s](\{.*:[\s]\d+\})", replication_string, flags=re.IGNORECASE)
+        replication_value = re.search(r".*replication[\s]=[\s](\{.*?\})", replication_string, flags=re.IGNORECASE)
 
         strategy_params = ast.literal_eval(replication_value[1])
         strategy_class = strategy_params.pop("class")
