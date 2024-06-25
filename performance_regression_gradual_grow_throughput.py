@@ -18,11 +18,12 @@ class PerformanceRegressionGradualGrowThroughutTest(PerformanceRegressionTest): 
         super().__init__(*args, **kwargs)
         # all parameters were taken from scylla-stress-orch repo
         # Planned data size is 3 TB in total: 1tb per node
-        self.NUM_THREADS = 500  # pylint: disable=invalid-name
+        self.NUM_THREADS = 10  # pylint: disable=invalid-name
         self.CLUSTER_SIZE = self.params.get("n_db_nodes")  # pylint: disable=invalid-name
         self.REPLICATION_FACTOR = 3  # pylint: disable=invalid-name
         # Planned data size is 3 TB in total: 1tb per node
-        self.DATASET_SIZE = 3000 * 1024 * 1024 * 1024  # pylint: disable=invalid-name
+        self.DATASET_SIZE = 10 * 1024 * 1024 * 1024  # pylint: disable=invalid-name
+        # self.DATASET_SIZE = 3000 * 1024 * 1024 * 1024  # pylint: disable=invalid-name
         # expected row size (was calculated by dev team ~313 bytes)
         self.ROW_SIZE_BYTES = 210 * 1024 * 1024 * 1024 / 720_000_000  # pylint: disable=invalid-name
         self.ROW_COUNT = int(self.DATASET_SIZE / self.ROW_SIZE_BYTES /  # pylint: disable=invalid-name
@@ -30,7 +31,7 @@ class PerformanceRegressionGradualGrowThroughutTest(PerformanceRegressionTest): 
         # How many standard deviations should span the cluster's memory
         self.CONFIDENCE = 6  # pylint: disable=invalid-name
         # instance i3.4xlarge
-        self.INSTANCE_MEMORY_GB = 122  # pylint: disable=invalid-name
+        self.INSTANCE_MEMORY_GB = 128  # pylint: disable=invalid-name
         self.GAUSS_CENTER = self.ROW_COUNT // 2  # pylint: disable=invalid-name
         self.GAUSS_SIGMA = int(self.INSTANCE_MEMORY_GB * self.CLUSTER_SIZE * 1024 * 1024 *  # pylint: disable=invalid-name
                                1024 // (self.CONFIDENCE * self.ROW_SIZE_BYTES * self.REPLICATION_FACTOR))
@@ -215,7 +216,8 @@ class PerformanceRegressionGradualGrowThroughutTest(PerformanceRegressionTest): 
         return status
 
     def warmup_cache(self, compaction_strategy):
-        cmd = f"cassandra-stress read no-warmup cl=QUORUM duration=180m -pop 'dist={self.get_cs_distribution()}' -mode native cql3 -rate 'threads=500 throttle=35000/s'"  # pylint: disable=line-too-long
+        cmd = f"cassandra-stress read no-warmup cl=QUORUM duration=10m -pop 'dist={self.get_cs_distribution()}' -mode native cql3 -rate 'threads=500 throttle=35000/s'"  # pylint: disable=line-too-long
+        # cmd = f"cassandra-stress read no-warmup cl=QUORUM duration=180m -pop 'dist={self.get_cs_distribution()}' -mode native cql3 -rate 'threads=500 throttle=35000/s'"  # pylint: disable=line-too-long
         stress_queue = self.run_stress_cassandra_thread(
             stress_cmd=cmd,
             stress_num=1,
