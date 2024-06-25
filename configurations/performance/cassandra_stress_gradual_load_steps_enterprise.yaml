@@ -1,0 +1,5 @@
+# Define load ops for steps
+perf_max_ops_read: 780000  # read test
+perf_max_ops_write: 405000  # write test
+perf_max_ops_mixed: 530000  # mixed test
+perf_throttle_steps: [25, 50, 75, 90, 100]  # percents from max ops: 25%, 50%, 75%, 90%, max_ops

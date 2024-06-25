@@ -1459,11 +1459,91 @@ class ThroughputLatencyGradualGrowPayloadPerformanceAnalyzer(BaseResultsAnalyzer
     Performance Analyzer for results with throughput and latency of gradual payload increase
     """
 
+    PARAMS = TestStatsMixin.STRESS_STATS
+
     def __init__(self, es_index, es_doc_type, email_recipients=(), logger=None, events=None):   # pylint: disable=too-many-arguments
         super().__init__(es_index=es_index, es_doc_type=es_doc_type, email_recipients=email_recipients,
                          email_template_fp="results_incremental_throughput_increase.html", logger=logger, events=events)
 
-    def check_regression(self, test_name, test_results, test_details) -> None:  # pylint: disable=too-many-locals, too-many-branches, too-many-statements
+    @staticmethod
+    def _remove_non_stat_keys(stats):
+        for non_stat_key in ['loader_idx', 'cpu_idx', 'keyspace_idx']:
+            if non_stat_key in stats:
+                del stats[non_stat_key]
+        return stats
+
+    def _test_stats(self, test_doc):
+        # check if stats exists
+        if 'results' not in test_doc['_source']:
+            self.log.error('Cannot find the field: results for test id: {}!'.format(test_doc['_id']))
+            return None
+        return test_doc['_source']['results']
+
+    def _get_previous_results(self, test_doc, is_gce=False):
+        filter_path = ['hits.hits._id',
+                       'hits.hits._source.results',
+                       'hits.hits._source.versions',
+                       'hits.hits._source.test_details',
+                       ]
+        query = PerformanceFilterCS(test_doc, is_gce, use_wide_query=True, lastyear=True)()
+
+        LOGGER.debug("ES QUERY: %s", query)
+        test_results = self._es.search(  # pylint: disable=unexpected-keyword-arg; pylint doesn't understand Elasticsearch code
+            index=self._es_index,
+            doc_type=self._es_doc_type,
+            q=query,
+            filter_path=filter_path,
+            size=self._limit)
+        if not test_results:
+            self.log.warning("No results found for query: %s", query)
+            return []
+        return test_results["hits"]["hits"]
+
+    @staticmethod
+    def _query_filter(test_doc, is_gce,  use_wide_query=False, lastyear=False, extra_jobs_to_compare=None):
+        if test_doc['_source']['test_details'].get('scylla-bench'):
+            return PerformanceFilterScyllaBench(test_doc, is_gce, use_wide_query, lastyear,
+                                                extra_jobs_to_compare=extra_jobs_to_compare)()
+        elif test_doc['_source']['test_details'].get('ycsb'):
+            return PerformanceFilterYCSB(test_doc, is_gce, use_wide_query, lastyear,
+                                         extra_jobs_to_compare=extra_jobs_to_compare)()
+        elif "cdc" in test_doc['_source']['test_details'].get('sub_type', ''):
+            return CDCQueryFilterCS(test_doc, is_gce, use_wide_query, lastyear,
+                                    extra_jobs_to_compare=extra_jobs_to_compare)()
+        else:
+            return PerformanceFilterCS(test_doc, is_gce, use_wide_query, lastyear,
+                                       extra_jobs_to_compare=extra_jobs_to_compare)()
+
+    def check_regression(self, test_id, test_name, test_results, test_details, is_gce) -> None:  # pylint: disable=too-many-locals, too-many-branches, too-many-statements
+        doc = self.get_test_by_id(test_id)
+        if not doc:
+            raise ValueError(f'Cannot find test by id: {test_id}')
+        self.log.debug("Find test by id: %s", PP.pformat(doc))
+
+        test_stats = self._test_stats(doc)
+        if not test_stats:
+            raise ValueError(f'Cannot find test by id: {doc.get("_id", "unknown test")}')
+        self.log.debug("Find test stats: %s", test_stats)
+
+        # filter tests
+        query = self._query_filter(doc, is_gce)
+        if not query:
+            raise ValueError(f'Cannot find query for {doc.get("_id", "unknown test")}')
+
+        self.log.debug("Query to ES: %s", query)
+        filter_path = ['hits.hits._id',
+                       'hits.hits._source.latency_95th_percentile_avg',
+                       'hits.hits._source.latency_95th_percentile_max',
+                       'hits.hits._source.latency_99th_percentile_avg',
+                       'hits.hits._source.latency_99th_percentile_max',
+                       'hits.hits._source.versions']
+        tests_filtered = self._es.search(index=self._es_index, q=query, filter_path=filter_path,  # pylint: disable=unexpected-keyword-arg
+                                         size=self._limit, request_timeout=30)
+
+        self.log.debug("tests_filtered: %s", PP.pformat(tests_filtered))
+        if not tests_filtered:
+            raise ValueError(f'Cannot find tests with the same parameters as {test_id}')
+
         results = dict(
             test_id=test_details.get("test_id", ""),
             stats=test_results,
@@ -1474,6 +1554,7 @@ class ThroughputLatencyGradualGrowPayloadPerformanceAnalyzer(BaseResultsAnalyzer
         subject = f"Performance Regression: {test_name} - {format_timestamp(test_details['start_time'])}"
         email_data = {'email_body': results,
                       'template': self._email_template_fp}
+        self.log.debug("self._email_template_fp: %s", self._email_template_fp)
         self.save_email_data_file(subject, email_data, file_path='email_data.json')
 
 

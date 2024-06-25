@@ -1195,6 +1195,17 @@ class SCTConfiguration(dict):
             be provided by the test suite infrastructure.
             multiple commands can passed as a list"""),
 
+        dict(name="perf_max_ops_read", env="SCT_PERF_MAX_OPS_READ", type=int,
+             help="Maximum ops for gradual read performance test."),
+
+        dict(name="perf_max_ops_write", env="SCT_PERF_MAX_OPS_WRITE", type=int,
+             help="Maximum ops for gradual write performance test."),
+
+        dict(name="perf_max_ops_mixed", env="SCT_PERF_MAX_OPS_MIXED", type=int,
+             help="Maximum ops for gradual mixed performance test."),
+        dict(name="perf_throttle_steps", env="SCT_PERF_THROTTLE_STEPS", type=list,
+             help="Used for gradual performance test. Define throttle for load step in % from max ops. Example: [25, 50]"),
+
         # RefreshTest
         dict(name="skip_download", env="SCT_SKIP_DOWNLOAD", type=boolean,
              help=""),
