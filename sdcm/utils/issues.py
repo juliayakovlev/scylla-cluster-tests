@@ -148,13 +148,14 @@ class SkipPerIssues:
             return None
 
     def issues_opened(self) -> bool:
+        logging.info("issues_opened: %s", [issue.state != 'closed' for issue in self.issues])
         return any(issue.state != 'closed' for issue in self.issues)
 
     def issues_labeled(self) -> bool:
         if self.params.scylla_version:
             branch_version = '.'.join(self.params.scylla_version.split('.')[0:2])
             issues_labels = sum([issue.labels for issue in self.issues], [])
-
+            logging.info("issues_labeled: %s", [f'sct-{branch_version}-skip' in label.name for label in issues_labels])
             return any(f'sct-{branch_version}-skip' in label.name for label in issues_labels)
 
         return False

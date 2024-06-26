@@ -1514,8 +1514,14 @@ class BaseNode(AutoSshContainerMixin):  # pylint: disable=too-many-instance-attr
                 event.backtrace = output.stdout
                 the_map = FindIssuePerBacktrace()
                 if issue_url := the_map.find_issue(backtrace_type=event.type, decoded_backtrace=event.backtrace):
+                    message = ""
+                    if SkipPerIssues(issue_url, self.parent_cluster.params):
+                        event.severity = Severity.DEBUG
+                        message = " Skip the issue. The issue may be opened or not backported to the current branch."
+                    else:
+                        event.severity = Severity.ERROR
                     event.known_issue = issue_url
-                    self.log.debug("Found issue for %s event: %s", event.event_id, event.known_issue)
+                    self.log.debug("Found issue for %s event: %s.%s", event.event_id, event.known_issue, message)
             except queue.Empty:
                 pass
             except Exception as details:  # pylint: disable=broad-except  # noqa: BLE001
