@@ -547,6 +547,7 @@ class AWSNode(cluster.BaseNode):
     def private_dns_name(self) -> str:
         result = self.remoter.run(
             'curl http://169.254.169.254/latest/meta-data/local-hostname', verbose=False)
+        LOGGER.info("private_dns_name: %s", result.stdout)
         return result.stdout.strip()
 
     def _get_public_ip_address(self) -> Optional[str]:

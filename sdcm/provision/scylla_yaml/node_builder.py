@@ -10,17 +10,19 @@
 # See LICENSE for more details.
 #
 # Copyright (c) 2021 ScyllaDB
-
-
+import logging
 from typing import Optional, List, Any
 
 from pydantic import Field
 
 from sdcm.provision.scylla_yaml.auxiliaries import ScyllaYamlAttrBuilderBase, SeedProvider
 
+LOGGER = logging.getLogger(__name__)
 
 # Disabling no-member since can't import BaseNode from 'sdcm.cluster' due to a circular import
 # pylint: disable=no-member
+
+
 class ScyllaYamlNodeAttrBuilder(ScyllaYamlAttrBuilderBase):
     """
     Builds scylla yaml attributes that are needed to keep node connected to the other nodes in the cluster
@@ -56,8 +58,11 @@ class ScyllaYamlNodeAttrBuilder(ScyllaYamlAttrBuilderBase):
 
     @property
     def listen_address(self) -> Optional[str]:
+        LOGGER.info("sdcm.provision.scylla_yaml.node_builder.ScyllaYamlNodeAttrBuilder.listen_address")
         if self.params.get('use_dns_names'):
-            return self.node.private_dns_name
+            private_dns_name = self.node.private_dns_name
+            LOGGER.info("sdcm.provision.scylla_yaml.node_builder.ScyllaYamlNodeAttrBuilder.listen_address: %s", private_dns_name)
+            return private_dns_name
         if self._is_ip_ssh_connections_ipv6:
             return self._ipv6_ip_address
         if self.params.get('extra_network_interface'):
@@ -91,13 +96,21 @@ class ScyllaYamlNodeAttrBuilder(ScyllaYamlAttrBuilderBase):
 
     @property
     def broadcast_address(self) -> Optional[str]:
+        LOGGER.info("sdcm.provision.scylla_yaml.node_builder.ScyllaYamlNodeAttrBuilder.broadcast_address")
         if self._is_ip_ssh_connections_ipv6:
+            LOGGER.info(
+                "sdcm.provision.scylla_yaml.node_builder.ScyllaYamlNodeAttrBuilder.broadcast_address, _is_ip_ssh_connections_ipv6")
             return self._ipv6_ip_address
         if self.params.get('extra_network_interface'):
+            LOGGER.info(
+                "sdcm.provision.scylla_yaml.node_builder.ScyllaYamlNodeAttrBuilder.broadcast_address, extra_network_interface")
             # Scylla should be listening on all interfaces
             return self._private_ip_address
         if self._intra_node_comm_public:
+            LOGGER.info(
+                "sdcm.provision.scylla_yaml.node_builder.ScyllaYamlNodeAttrBuilder.broadcast_address, _intra_node_comm_public")
             return self._public_ip_address
+        LOGGER.info("sdcm.provision.scylla_yaml.node_builder.ScyllaYamlNodeAttrBuilder.broadcast_address, None")
         return None
 
     @property
