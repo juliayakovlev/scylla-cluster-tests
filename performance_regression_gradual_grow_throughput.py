@@ -1,4 +1,5 @@
 import os
+import time
 from enum import Enum
 from collections import defaultdict
 
@@ -114,23 +115,21 @@ class PerformanceRegressionGradualGrowThroughputTest(PerformanceRegressionTest):
 
     # pylint: disable=too-many-arguments,too-many-locals
     def run_gradual_increase_load(self, stress_cmd_templ, stress_num, num_loaders, compaction_strategy, test_name, sub_type):
-        self.warmup_cache(compaction_strategy)
+        self.warmup_cache(compaction_strategy, stress_cmd_templ)
         if not self.exists():
             self.create_test_stats(sub_type=sub_type, doc_id_with_timestamp=True)
         total_summary = []
         max_ops = self.params.get(f"perf_max_ops_{sub_type}")
-        throttle_steps = self.params.get("perf_throttle_steps")
 
         throttle_step = 100
-        # for throttle_step in throttle_steps:
-        for num_threads in [500, 500, 700, 700, 900, 900, 1000, 1000, 1100, 1100, 1200, 1200]:
+        # for num_threads in [1000, 1000, 1000, 1100, 1100, 1100, 1200, 1200, 1200]:
+        for num_threads in [1000]:
             current_ops = int(max_ops * throttle_step / 100) if throttle_step < 100 else max_ops
             self.log.info("Run cs command with rate: %s Kops", current_ops)
             current_throttle = f"throttle={int(current_ops // (num_loaders * stress_num))}/s" if current_ops < max_ops else ""
             stress_queue = []
             for stress_cmd in stress_cmd_templ:
                 params = {"round_robin": True, "stats_aggregate_cmds": False}
-                # stress_cmd_to_run = stress_cmd.replace("$threads", f"{self.NUM_THREADS}").replace(
                 stress_cmd_to_run = stress_cmd.replace("$threads", f"{num_threads}").replace(
                     "$throttle", f"{current_throttle}")
                 params.update({'stress_cmd': stress_cmd_to_run})
@@ -139,16 +138,19 @@ class PerformanceRegressionGradualGrowThroughputTest(PerformanceRegressionTest):
                 stress_queue.append(self.run_stress_thread(**params))
 
             results = []
+            op_rate = 0
             for stress in stress_queue:
                 results.extend(self.get_stress_results(queue=stress, store_results=False))
+                op_rate += int(results[-1]["op rate"])
                 self.log.debug("One c-s command results: %s", results[-1])
-                self.log.debug("All current results: %s", results)
+            self.log.debug("All current results: %s", results)
+            self.log.debug("op_rate: %s", op_rate)
             summary_result = self._calculate_average_max_latency(results)
             summary_result["ops"] = current_ops
             # TODO: remove next line
-            summary_result["op_rate"] = summary_result["op rate"] * num_loaders
+            summary_result["op_rate"] = op_rate
             es_extra_stats = {'ops_expected': current_ops,
-                              'op_rate': summary_result["op rate"] * num_loaders,
+                              'op_rate': op_rate,
                               "latency_95th_percentile_avg": summary_result["latency 95th percentile"],
                               "latency_95th_percentile_max": summary_result["latency 95th percentile max"],
                               "latency_99th_percentile_avg": summary_result["latency 99th percentile"],
@@ -159,6 +161,8 @@ class PerformanceRegressionGradualGrowThroughputTest(PerformanceRegressionTest):
             self.update_test_details(extra_stats=es_extra_stats, scylla_conf=True)
             self.log.debug("C-S results for ops: %s. \n Results: \n %s", current_ops, summary_result)
             total_summary.append(summary_result)
+            # self.wait_no_compactions_running(n=400, sleep_time=120)
+            time.sleep(120)
 
         total_summary_json = json.dumps(total_summary, indent=4, separators=(", ", ": "))
         self.log.debug("---------------------------------")
@@ -228,14 +232,16 @@ class PerformanceRegressionGradualGrowThroughputTest(PerformanceRegressionTest):
 
         return status
 
-    def warmup_cache(self, compaction_strategy):
-        cmd = f"cassandra-stress read no-warmup cl=QUORUM duration=20m -pop 'dist=gauss(1..650000004,54166668,542209)' -mode native cql3 -rate 'threads=1000' -col 'size=FIXED(1024) n=FIXED(1)'"  # pylint: disable=line-too-long
-        # cmd = f"cassandra-stress read no-warmup cl=QUORUM duration=180m -pop 'dist={self.get_cs_distribution()}' -mode native cql3 -rate 'threads=500 throttle=35000/s'"  # pylint: disable=line-too-long
-        stress_queue = self.run_stress_cassandra_thread(
-            stress_cmd=cmd,
-            stress_num=1,
-            compaction_strategy=compaction_strategy,
-            stats_aggregate_cmds=False,
-            round_robin=True
-        )
-        self.get_stress_results(stress_queue, store_results=False)
+    def warmup_cache(self, compaction_strategy, stress_cmd_templ):
+        stress_queue = []
+        for stress_cmd in stress_cmd_templ:
+            params = {"round_robin": True, "stats_aggregate_cmds": False}
+            stress_cmd_to_run = stress_cmd.replace("$threads", "1000").replace(
+                "$throttle", "").replace("duration=20m", "n=20000000")
+            params.update({'stress_cmd': stress_cmd_to_run})
+            # Run all stress commands
+            self.log.debug('RUNNING stress cmd: %s', stress_cmd_to_run)
+            stress_queue.append(self.run_stress_thread(**params))
+
+        for stress in stress_queue:
+            self.get_stress_results(queue=stress, store_results=False)

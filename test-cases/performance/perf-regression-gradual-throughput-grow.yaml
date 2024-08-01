@@ -1,41 +1,32 @@
 test_duration: 500
-prepare_write_cmd: [
-  "cassandra-stress write no-warmup cl=ALL n=108333334 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=150 -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=1..108333334",
-  "cassandra-stress write no-warmup cl=ALL n=108333334 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=150 -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=108333335..216666668",
-  "cassandra-stress write no-warmup cl=ALL n=108333334 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=150 -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=216666669..325000002",
-  "cassandra-stress write no-warmup cl=ALL n=108333334 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=150 -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=325000003..433333336",
-  "cassandra-stress write no-warmup cl=ALL n=108333334 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=150 -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=433333337..541666670",
-  "cassandra-stress write no-warmup cl=ALL n=108333334 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=150 -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=541666671..650000004"
+prepare_write_cmd:  [
+  "cassandra-stress write no-warmup cl=ALL n=216666668 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=150 -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=1..216666668",
+  "cassandra-stress write no-warmup cl=ALL n=216666668 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=150 -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=216666669..433333336",
+  "cassandra-stress write no-warmup cl=ALL n=216666668 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=150 -col 'size=FIXED(1024) n=FIXED(1)'  -pop seq=433333337..650000004"
 ]
 
 stress_cmd_w: [
-  "cassandra-stress write no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=650000005..758333339",
-  "cassandra-stress write no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=758333340..866666674",
-  "cassandra-stress write no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=866666675..975000008",
-  "cassandra-stress write no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=975000009..1083333343",
-  "cassandra-stress write no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1083333344..1191666678",
-  "cassandra-stress write no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1191666679..1300000013"
+  "cassandra-stress write no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..13333334",
+  "cassandra-stress write no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=13333335..26666668",
+  "cassandra-stress write no-warmup cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=26666669..40000002"
 ]
+
 stress_cmd_r: [
-  "cassandra-stress read no-warmup cl=QUORUM duration=20m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(1..108333334,54166668,542209)'",
-  "cassandra-stress read no-warmup cl=QUORUM duration=20m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(108333335..216666668,162500002,542209)'",
-  "cassandra-stress read no-warmup cl=QUORUM duration=20m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(216666669..325000002,270833336,542209)'",
-  "cassandra-stress read no-warmup cl=QUORUM duration=20m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(325000003..433333336,379166670,542209)'",
-  "cassandra-stress read no-warmup cl=QUORUM duration=20m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(433333337..541666670,487500004,542209)'",
-  "cassandra-stress read no-warmup cl=QUORUM duration=20m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(541666671..650000004,595833338,542209)'"
+  "cassandra-stress read no-warmup cl=QUORUM duration=20m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..5000000",
+  "cassandra-stress read no-warmup cl=QUORUM duration=20m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=5000001..10000000",
+  "cassandra-stress read no-warmup cl=QUORUM duration=20m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=10000001..15000000"
 ]
+
 stress_cmd_m: [
-  "cassandra-stress mixed no-warmup cl=QUORUM duration=30m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(1..108333334,54166668,542209)'",
-  "cassandra-stress mixed no-warmup cl=QUORUM duration=30m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(108333335..216666668,162500002,542209)'",
-  "cassandra-stress mixed no-warmup cl=QUORUM duration=30m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(216666669..325000002,270833336,542209)'",
-  "cassandra-stress mixed no-warmup cl=QUORUM duration=30m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(325000003..433333336,379166670,542209)'",
-  "cassandra-stress mixed no-warmup cl=QUORUM duration=30m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(433333337..541666670,487500004,542209)'",
-  "cassandra-stress mixed no-warmup cl=QUORUM duration=30m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(541666671..650000004,595833338,542209)'"
+  "cassandra-stress mixed cl=QUORUM duration=1m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(1..216666668,108333334,1084418)'",
+  "cassandra-stress mixed cl=QUORUM duration=1m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(216666669..433333336,325000002,1084418)'",
+  "cassandra-stress mixed cl=QUORUM duration=1m -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(1024) n=FIXED(1)' -pop 'dist=gauss(433333337..650000004,541666670,1084418)'"
 ]
+
 round_robin: true
 
 n_db_nodes: 3
-n_loaders: 6
+n_loaders: 3
 n_monitor_nodes: 1
 
 
