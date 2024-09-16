@@ -1627,7 +1627,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     def disrupt_kill_scylla(self):
         self._kill_scylla_daemon()
 
-    def disrupt_no_corrupt_repair(self):
+    def _disrupt_no_corrupt_repair(self):
         # prepare test tables and fill test data
         for i in range(10):
             self.log.debug('Prepare test tables if they do not exist')
@@ -5410,6 +5410,29 @@ class EnableDisableTableEncryptionAwsKmsProviderMonkey(Nemesis):
 
     def disrupt(self):
         self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list, predefined_sequence=True)
+
+
+class IssueSct553(Nemesis):
+    disruptive = True
+    kubernetes = False  # Enable it when EKS SCT code starts supporting the KMS service
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # self.disrupt_methods_list = [
+        #     'disrupt_rolling_restart_cluster', 'disrupt_nodetool_decommission', 'disrupt_mgmt_repair_cli',
+        #     'disrupt_hot_reloading_internode_certificate', 'disrupt_start_stop_scrub_compaction', 'disrupt_no_corrupt_repair',
+        #     'disrupt_multiple_hard_reboot_node',
+        # ]
+        self.disrupt_methods_list = [
+            'disrupt_multiple_hard_reboot_node',
+        ]
+
+    def disrupt(self):
+        for disrupt_method_str in self.disrupt_methods_list:
+            disrupt_method = [attr[1] for attr in inspect.getmembers(self) if
+                              attr[0] == disrupt_method_str and callable(attr[1])][0]
+            self.execute_disrupt_method(disrupt_method)
+        # self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list, predefined_sequence=True)
 
 
 class RestartThenRepairNodeMonkey(Nemesis):
