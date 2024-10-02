@@ -28,6 +28,7 @@ class Workload(NamedTuple):
     preload_data: bool
     drop_keyspace: bool
     wait_no_compactions: bool
+    pre_create_schema: bool
 
 
 class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # pylint: disable=too-many-instance-attributes
@@ -68,7 +69,8 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
                             throttle_steps=self.throttle_steps(workload_type),
                             preload_data=True,
                             drop_keyspace=False,
-                            wait_no_compactions=True)
+                            wait_no_compactions=True,
+                            pre_create_schema=False)
         self._base_test_workflow(workload=workload,
                                  test_name="test_mixed_gradual_increase_load (read:50%,write:50%)")
 
@@ -87,7 +89,8 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
                             throttle_steps=self.throttle_steps(workload_type),
                             preload_data=False,
                             drop_keyspace=True,
-                            wait_no_compactions=False)
+                            wait_no_compactions=False,
+                            pre_create_schema=True)
         self._base_test_workflow(workload=workload,
                                  test_name="test_write_gradual_increase_load (100% writes)")
 
@@ -106,7 +109,8 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
                             throttle_steps=self.throttle_steps(workload_type),
                             preload_data=True,
                             drop_keyspace=False,
-                            wait_no_compactions=True)
+                            wait_no_compactions=True,
+                            pre_create_schema=False)
         self._base_test_workflow(workload=workload,
                                  test_name="test_read_gradual_increase_load (100% reads)")
 
@@ -187,9 +191,23 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
         return results
 
     def drop_keyspace(self):
-        self.log.debug(f'Drop keyspace {"keyspace1"}')
+        self.log.debug('Drop keyspace keyspace1')
         with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
-            session.execute(f'DROP KEYSPACE IF EXISTS {"keyspace1"};')
+            session.execute('DROP KEYSPACE IF EXISTS keyspace1')
+
+    def pre_create_schema(self):
+        keyspace_name = "keyspace1"
+        self.create_keyspace(keyspace_name=keyspace_name, replication_factor=3)
+        self.log.debug('{} Created'.format(keyspace_name))
+        columns = {}
+        for col_idx in range(1):
+            cs_key = '"C' + str(col_idx) + '"'
+            columns[cs_key] = 'blob'
+        self.create_table(name='standard1', keyspace_name=keyspace_name, key_type='blob', read_repair=0.0,
+                          columns=columns)
+        if post_prepare_cql_cmds := self.params.get('post_prepare_cql_cmds'):
+            self.log.debug("Execute post prepare queries: %s", post_prepare_cql_cmds)
+            self._run_cql_commands(post_prepare_cql_cmds)
 
     # pylint: disable=too-many-arguments,too-many-locals
     def run_gradual_increase_load(self, workload: Workload, stress_num, num_loaders, test_name):  # noqa: PLR0914
@@ -202,6 +220,8 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
         total_summary = {}
 
         for throttle_step in workload.throttle_steps:
+            # if workload.pre_create_schema:
+            #     self.pre_create_schema()
             self.log.info("Run cs command with rate: %s Kops", throttle_step)
             current_throttle = f"fixed={int(int(throttle_step) // (num_loaders * stress_num))}/s" if throttle_step != "unthrottled" else ""
             run_step = ((latency_calculator_decorator(legend=f"Gradual test step {throttle_step} op/s",
@@ -213,6 +233,7 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
             self.update_test_details(scylla_conf=True)
             summary_result = self.check_latency_during_steps(step=throttle_step)
             summary_result[throttle_step].update({"ops_rate": calculate_result["op rate"] * num_loaders})
+            self.log.debug("Step summary result: %s", summary_result)
             total_summary.update(summary_result)
             if workload.drop_keyspace:
                 self.drop_keyspace()
