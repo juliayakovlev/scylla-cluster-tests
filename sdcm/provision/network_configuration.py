@@ -89,6 +89,15 @@ class ScyllaNetworkConfiguration:
         else:
             return None
 
+    @property
+    def device(self):
+        # Depend on network configuration:
+        # - "eth0" - if broadcast_address.nic = 0
+        # - "eth1" - if broadcast_address.nic = 1
+        if broadcast_address_config := [conf for conf in self.scylla_network_config if conf["address"] == "broadcast_address"]:
+            return f"eth{broadcast_address_config[0]['nic']}"
+        return "eth0"
+
     def get_ip_by_address_config(self, address_config: dict) -> str:
         if not (interface := [conf for conf in self.network_interfaces if address_config["nic"] == conf.device_index]):
             raise NetworkInterfaceNotFound(f"Not found network interface with device_index {address_config['nic']}. "
