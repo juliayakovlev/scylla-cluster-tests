@@ -21,7 +21,6 @@ import os
 from functools import wraps, partial, cached_property
 from typing import Optional, Callable
 
-from sdcm.argus_results import send_result_to_argus
 from sdcm.sct_events.database import DatabaseLogEvent
 
 from sdcm.sct_events.event_counter import EventCounterContextManager
@@ -260,26 +259,26 @@ def latency_calculator_decorator(original_function: Optional[Callable] = None, *
             if "steady" in func_name.lower():
                 if 'Steady State' not in latency_results:
                     latency_results['Steady State'] = result
-                    send_result_to_argus(
-                        argus_client=tester.test_config.argus_client(),
-                        workload=workload,
-                        name="Steady State",
-                        description="Latencies without any operation running",
-                        cycle=0,
-                        result=result,
-                        start_time=start,
-                    )
+                    # send_result_to_argus(
+                    #     argus_client=tester.test_config.argus_client(),
+                    #     workload=workload,
+                    #     name="Steady State",
+                    #     description="Latencies without any operation running",
+                    #     cycle=0,
+                    #     result=result,
+                    #     start_time=start,
+                    # )
             else:
                 latency_results[func_name]['cycles'].append(result)
-                send_result_to_argus(
-                    argus_client=tester.test_config.argus_client(),
-                    workload=workload,
-                    name=f"{func_name}",
-                    description=legend or "",
-                    cycle=len(latency_results[func_name]['cycles']),
-                    result=result,
-                    start_time=start,
-                )
+                # send_result_to_argus(
+                #     argus_client=tester.test_config.argus_client(),
+                #     workload=workload,
+                #     name=f"{func_name}",
+                #     description=legend or "",
+                #     cycle=len(latency_results[func_name]['cycles']),
+                #     result=result,
+                #     start_time=start,
+                # )
 
             with open(latency_results_file_path, 'w', encoding="utf-8") as file:
                 json.dump(latency_results, file)

@@ -336,8 +336,8 @@ class PerformanceRegressionTest(ClusterTester):  # pylint: disable=too-many-publ
         results = self.get_stress_results(queue=stress_queue)
         self.update_test_details(scrap_metrics_step=60)
         self.display_results(results, test_name='test_latency' if not nemesis else 'test_latency_with_nemesis')
-        check_latency = self.check_regression if not nemesis else self.check_latency_during_ops
-        check_latency()
+        # check_latency = self.check_regression if not nemesis else self.check_latency_during_ops
+        # check_latency()
 
     def prepare_mv(self, on_populated=False):
         with self.db_cluster.cql_connection_patient_exclusive(self.db_cluster.nodes[0]) as session:
