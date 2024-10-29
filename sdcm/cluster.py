@@ -2245,8 +2245,10 @@ class BaseNode(AutoSshContainerMixin):  # pylint: disable=too-many-instance-attr
             extra_setup_args += ' --swap-directory / '
         if self.parent_cluster.params.get('unified_package'):
             extra_setup_args += ' --no-verify-package '
-        self.remoter.run('sudo /usr/lib/scylla/scylla_setup --nic {} --disks {} --setup-nic-and-disks {}'
-                         .format(devname, ','.join(disks), extra_setup_args))
+        cmd = 'sudo /usr/lib/scylla/scylla_setup --nic {} --disks {} --setup-nic-and-disks {}'.format(devname, ','.join(disks),
+                                                                                                      extra_setup_args)
+        self.log.debug("Run scylla_setup as: %s", cmd)
+        self.remoter.run(cmd)
 
         result = self.remoter.run('cat /proc/mounts')
         assert ' /var/lib/scylla ' in result.stdout, "RAID setup failed, scylla directory isn't mounted correctly"
@@ -4702,12 +4704,31 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
 
         node.stop_scylla_server(verify_down=False)
         node.clean_scylla_data()
+
         node.remoter.sudo(cmd="rm -f /etc/scylla/ami_disabled", ignore_status=True)
 
         if self.is_additional_data_volume_used():
             result = node.remoter.sudo(cmd="scylla_io_setup")
             if result.ok:
                 self.log.info("Scylla_io_setup result: %s", result.stdout)
+
+        # This part shouldn't be run in parallel on the few nodes because it causes to repair failure:
+        #   status=failed: mandatory neighbor=10.12.3.17 is not alive
+        # When it was run as part of after-scylla-config, it also caused to different problems like
+        # https://github.com/scylladb/scylladb/issues/21457 and Scylla can not up.
+
+        # This workaround won't work when there are the few scylla discs
+        self.log.info("Try to disable online discard")
+        self.log.debug("Run umount")
+        umount = node.remoter.run('sudo umount /dev/nvme1n1', ignore_status=True)
+        if "not mounted" not in umount.stderr or umount.exit_status == 0:
+            self.log.debug("Rerun umount")
+            node.remoter.run('sudo umount /dev/nvme1n1', ignore_status=True)
+        node.remoter.run('df -h')
+        node.remoter.run(
+            'sudo mount /dev/nvme1n1 /var/lib/scylla -o rw,noatime,attr2,inode64,logbufs=8,logbsize=32k,noquota')
+        self.log.debug("Run proc/mounts after scylla_setup")
+        node.remoter.run('cat /proc/mounts')
 
         if self.params.get('force_run_iotune'):
             node.remoter.sudo(
@@ -4879,6 +4900,27 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
         # failures
         if check_node_health:
             node_list[0].check_node_health()
+
+        # for node in node_list:
+        #     # This part shouldn't be run in parallel on the few nodes because it causes to repair failure:
+        #     #   status=failed: mandatory neighbor=10.12.3.17 is not alive
+        #     # When it was run as part of after-scylla-config, it also caused to different problems like
+        #     # https://github.com/scylladb/scylladb/issues/21457 and Scylla can not up
+        #     self.log.info("Try to disable online discard")
+        #     node.stop_scylla()
+        #     # self.remoter.run('sudo systemctl stop scylla-server.service')
+        #     self.log.debug("Run umount")
+        #     umount = node.remoter.run('sudo umount /dev/nvme1n1', ignore_status=True)
+        #     if "not mounted" not in umount.stderr or umount.exit_status == 0:
+        #         self.log.debug("Rerun umount")
+        #         node.remoter.run('sudo umount /dev/nvme1n1', ignore_status=True)
+        #     node.remoter.run('df -h')
+        #     node.remoter.run(
+        #         'sudo mount /dev/nvme1n1 /var/lib/scylla -o rw,noatime,attr2,inode64,logbufs=8,logbsize=32k,noquota')
+        #     node.start_scylla(verify_up=True, verify_down=True)
+        #     # self.remoter.run('sudo systemctl start scylla-server.service')
+        #     self.log.debug("Run proc/mounts after scylla_setup")
+        #     node.remoter.run('cat /proc/mounts')
 
     def restart_scylla(self, nodes=None, random_order=False):
         nodes_to_restart = (nodes or self.nodes)[:]  # create local copy of nodes list
