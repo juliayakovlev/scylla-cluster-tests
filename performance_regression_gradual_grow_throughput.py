@@ -86,7 +86,7 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
                             num_threads=self.params["perf_gradual_threads"][workload_type],
                             throttle_steps=self.throttle_steps(workload_type),
                             preload_data=False,
-                            drop_keyspace=True,
+                            drop_keyspace=False,
                             wait_no_compactions=False)
         self._base_test_workflow(workload=workload,
                                  test_name="test_write_gradual_increase_load (100% writes)")
@@ -216,6 +216,9 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
             total_summary.update(summary_result)
             if workload.drop_keyspace:
                 self.drop_keyspace()
+            # TODO: remove next 2 lines
+            if not workload.wait_no_compactions:
+                time.sleep(120)
             # We want 3 minutes (180 sec) wait between steps.
             # In case of "mixed" workflow - wait for compactions finished.
             # In case of "read" workflow -  it just will wait for 3 minutes

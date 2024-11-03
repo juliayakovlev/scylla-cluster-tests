@@ -246,6 +246,7 @@ def latency_calculator_decorator(original_function: Optional[Callable] = None, *
                 result["hdr_summary"] = tester.get_cs_range_histogram(stress_operation=workload,
                                                                       start_time=start,
                                                                       end_time=end)
+                LOGGER.debug("hdr_summary: %s", result["hdr_summary"])
             except Exception as err:  # noqa: BLE001
                 LOGGER.error("Failed to get cs_range_histogram error: %s", err)
                 result["hdr_summary"] = {}
