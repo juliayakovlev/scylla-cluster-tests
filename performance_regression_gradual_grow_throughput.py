@@ -4,6 +4,7 @@ from enum import Enum
 from collections import defaultdict
 
 import json
+from functools import cached_property
 from typing import NamedTuple
 
 from performance_regression_test import PerformanceRegressionTest
@@ -12,6 +13,7 @@ from sdcm.sct_events import Severity
 from sdcm.sct_events.system import TestFrameworkEvent
 from sdcm.results_analyze import PredefinedStepsTestPerformanceAnalyzer
 from sdcm.utils.decorators import latency_calculator_decorator
+from sdcm.utils.features import is_tablets_feature_enabled
 from sdcm.utils.latency import calculate_latency, analyze_hdr_percentiles
 
 
@@ -40,10 +42,17 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
     Latency for every step is received from cassandra-stress HDR file and reported in Argus and email.
     """
 
+    KEYSPACE_NAME = "keyspace1"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.CLUSTER_SIZE = self.params.get("n_db_nodes")  # pylint: disable=invalid-name
         self.REPLICATION_FACTOR = 3  # pylint: disable=invalid-name
+
+    @cached_property
+    def _is_tablets_feature_enabled(self):
+        with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+            return is_tablets_feature_enabled(session=session)
 
     def throttle_steps(self, workload_type):
         throttle_steps = self.params["perf_gradual_throttle_steps"]
@@ -116,6 +125,7 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
         num_loaders = len(self.loaders.nodes)
         self.run_fstrim_on_all_db_nodes()
         # run a write workload as a preparation
+        self.create_tablespace()
         if workload.preload_data and not skip_optional_stage('perf_preload_data'):
             self.preload_data()
             self.wait_no_compactions_running(n=400, sleep_time=120)
@@ -187,6 +197,17 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
             self.log.debug("One c-s command results: %s", results[-1])
         return results
 
+    def create_tablespace(self):
+        init_tablets = " and tablets={'initial': 1024}" if self._is_tablets_feature_enabled else ""
+        self.log.debug("enable_tablets: %s", self.params.get("enable_tablets"))
+        self.log.debug("init_tablets: %s", init_tablets)
+        create_ks_cmd = f"CREATE KEYSPACE {self.KEYSPACE_NAME} WITH replication = " \
+                        "{'class': 'org.apache.cassandra.locator.NetworkTopologyStrategy', 'us-east': '3'} AND durable_writes = true" \
+                        f"{init_tablets}"
+        self.log.debug("Create keyspace with command: %s",  create_ks_cmd)
+        with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+            session.execute(create_ks_cmd)
+
     def drop_keyspace(self):
         self.log.debug(f'Drop keyspace {"keyspace1"}')
         with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
@@ -217,6 +238,7 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
             total_summary.update(summary_result)
             if workload.drop_keyspace:
                 self.drop_keyspace()
+                self.create_tablespace()
             # We want 3 minutes (180 sec) wait between steps.
             # In case of "mixed" workflow - wait for compactions finished.
             # In case of "read" workflow -  it just will wait for 3 minutes
