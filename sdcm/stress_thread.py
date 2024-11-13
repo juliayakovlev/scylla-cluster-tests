@@ -28,6 +28,7 @@ from sdcm.prometheus import nemesis_metrics_obj
 from sdcm.provision.helpers.certificate import SCYLLA_SSL_CONF_DIR, c_s_transport_str
 from sdcm.reporting.tooling_reporter import CassandraStressVersionReporter
 from sdcm.sct_events import Severity
+from sdcm.sct_events.system import InfoEvent
 from sdcm.utils.common import FileFollowerThread, get_data_dir_path, time_period_str_to_seconds, SoftTimeoutContext
 from sdcm.utils.user_profile import get_profile_content, replace_scylla_qa_internal_path
 from sdcm.sct_events.loaders import CassandraStressEvent, CS_ERROR_EVENTS_PATTERNS, CS_NORMAL_EVENTS_PATTERNS
@@ -87,6 +88,18 @@ class CSHDRFileLogger(SSHLoggerBase):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if not os.path.exists(self._target_log_file):
+            LOGGER.debug("'%s' file is not found on the runner. Try to find it from loader", self._target_log_file)
+            result = self._node.remoter.run(f"test -f {self._remote_log_file}", ignore_status=True)
+            if result.ok:
+                LOGGER.debug("The '%s' file found on the loader %s", self._remote_log_file, self._node.name)
+                LOGGER.debug("Copy the '%s' file from the loader %s to runner into '%s' file", self._remote_log_file, self._node.name,
+                             self._target_log_file)
+                self._node.remoter.receive_files(src=self._remote_log_file, dst=self._target_log_file)
+            else:
+                # TODO: add event
+                InfoEvent(message=f"'{self._remote_log_file}' HDR file was not created on the loader {self._node.name}",
+                          severity=Severity.ERROR).publish()
         self.stop()
 
 
