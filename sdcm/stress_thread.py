@@ -17,6 +17,7 @@ import time
 import uuid
 import logging
 import contextlib
+from datetime import datetime
 from typing import Any
 from itertools import chain
 from pathlib import Path
@@ -72,9 +73,10 @@ class CassandraStressEventsPublisher(FileFollowerThread):
 
 
 class CSHDRFileLogger(SSHLoggerBase):
-    VERBOSE_RETRIEVE = False
+    VERBOSE_RETRIEVE = True
 
     def __init__(self, node: BaseNode, remote_log_file: str, target_log_file: str):
+        LOGGER.debug("Before SSHLoggerBase.__init__. remote_log_file: %s", remote_log_file)
         super().__init__(node=node, target_log_file=target_log_file)
         self._remote_log_file = remote_log_file
 
@@ -101,6 +103,30 @@ class CSHDRFileLogger(SSHLoggerBase):
 
         LOGGER.debug("The '%s' file found on the loader %s", self._remote_log_file, self._node.name)
         self._node.remoter.receive_files(src=self._remote_log_file, dst=self._target_log_file)
+
+    # @raise_event_on_failure
+    def _journal_thread(self) -> None:
+        LOGGER.debug("Start journal thread. %s", self._remote_log_file)
+        read_from_timestamp = None
+        LOGGER.debug("read_from_timestamp: %s", read_from_timestamp)
+        te_is_set = self._termination_event.is_set()
+        LOGGER.debug("_termination_event is set?: %s. %s", te_is_set, self._remote_log_file)
+        while not te_is_set:
+            LOGGER.debug("Start check if remoter ready. %s", self._remote_log_file)
+            if self._is_ready_to_retrieve():
+                LOGGER.debug("Remoter ready. %s", self._remote_log_file)
+                self._retrieve(since=read_from_timestamp)
+                read_from_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                LOGGER.debug("Remoter is not ready. %s", self._remote_log_file)
+                time.sleep(self.READINESS_CHECK_DELAY)
+            te_is_set = self._termination_event.is_set()
+
+    def _is_ready_to_retrieve(self) -> bool:
+        LOGGER.debug("Before remoter is_up. %s", self._remote_log_file)
+        is_up = self._remoter.is_up()
+        LOGGER.debug("After remoter is_up. Result: %s. %s", is_up, self._remote_log_file)
+        return is_up
 
     def __enter__(self):
         self.start()
@@ -301,12 +327,12 @@ class CassandraStressThread(DockerBasedStressThread):  # pylint: disable=too-man
             cmd_runner = cleanup_context = RemoteDocker(loader, self.docker_image_name,
                                                         command_line="-c 'tail -f /dev/null'",
                                                         extra_docker_opts=f'{cpu_options} '
-                                                        '--network=host '
-                                                        '--security-opt seccomp=unconfined '
-                                                        f'--label shell_marker={self.shell_marker}'
-                                                        f' --entrypoint /bin/bash'
-                                                        f' -w /'
-                                                        f' -v $HOME/{remote_hdr_file_name}:/{remote_hdr_file_name}')
+                                                                          '--network=host '
+                                                                          '--security-opt seccomp=unconfined '
+                                                                          f'--label shell_marker={self.shell_marker}'
+                                                                          f' --entrypoint /bin/bash'
+                                                                          f' -w /'
+                                                                          f' -v $HOME/{remote_hdr_file_name}:/{remote_hdr_file_name}')
 
         stress_cmd = self.create_stress_cmd(cmd_runner, keyspace_idx, loader)
         if self.params.get('cs_debug'):
@@ -333,13 +359,18 @@ class CassandraStressThread(DockerBasedStressThread):  # pylint: disable=too-man
             cmd_runner.send_files(str(connection_bundle_file),
                                   self.target_connection_bundle_file, delete_dst=True, verbose=True)
 
+        LOGGER.debug("Before check use_hdr_cs_histogram, remote_hdr_file_name: %s", remote_hdr_file_name)
         if self.params.get("use_hdr_cs_histogram"):
+            LOGGER.debug("Before _add_hdr_log_option, remote_hdr_file_name: %s", remote_hdr_file_name)
             stress_cmd = self._add_hdr_log_option(stress_cmd, remote_hdr_file_name)
+            LOGGER.debug("Before CSHDRFileLogger start for cmd: %s, remote_hdr_file_name: %s",
+                         stress_cmd, remote_hdr_file_name)
             hdr_logger_context = CSHDRFileLogger(
                 node=loader,
                 remote_log_file=remote_hdr_file_name,
                 target_log_file=os.path.join(loader.logdir, remote_hdr_file_name),
             )
+            LOGGER.debug("After CSHDRFileLogger start for cmd: %s", stress_cmd)
         else:
             hdr_logger_context = contextlib.nullcontext()
 

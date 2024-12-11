@@ -53,6 +53,7 @@ class LoggerBase(metaclass=ABCMeta):
     def __init__(self, target_log_file: str):
         self._target_log_file = target_log_file
         self._log = logging.getLogger(self.__class__.__name__)
+        self._log.info("LoggerBase inited, target_log_file: %s", target_log_file)
 
     @abstractmethod
     def start(self) -> None:
@@ -70,17 +71,39 @@ class SSHLoggerBase(LoggerBase):
 
     def __init__(self, node: BaseNode, target_log_file: str):
         super().__init__(target_log_file=target_log_file)
+        self._log.info("After LoggerBase.__init__, target_log_file: %s; node: %s", target_log_file, node.name)
         self._node = node
+        self._log.info("Before set _termination_event, target_log_file: %s; node: %s", target_log_file, node.name)
         self._termination_event = Event()
+        self._log.info("Termination event: %s; node: %s, target_log_file: %s",
+                       self._termination_event, node.name, target_log_file)
+        self._log.info("Start child process; node: %s, target_log_file: %s", node.name, target_log_file)
         self._child_process = Process(target=self._journal_thread, daemon=True)
+        self._log.info("The child process is created: %s; node: %s, target_log_file: %s", self._child_process.is_alive(), node.name,
+                       target_log_file)
+        self.target_log_file = target_log_file
+        # self._child_process = ThreadPoolExecutor(target=self._journal_thread, daemon=True)
 
     def start(self) -> None:
+        self._log.info("Remoter type: %s, target_log_file: %s", type(self._remoter), self.target_log_file)
         self._termination_event.clear()
+        self._log.info("_termination_event cleared, target_log_file: %s", self.target_log_file)
+        self._log.info("_child_process starting, target_log_file: %s", type(self._remoter), self.target_log_file)
         self._child_process.start()
+        self._log.info("_child_process started: %s, target_log_file: %s",
+                       self._child_process.is_alive(), self.target_log_file)
+        self._log.info("_child_process exitcode: %s, target_log_file: %s",
+                       self._child_process.exitcode, self.target_log_file)
 
     def stop(self, timeout: float | None = None) -> None:
+        self._log.info("set _termination_event, _child_process is_alive?: %s, target_log_file: %s", self._child_process.is_alive(),
+                       self.target_log_file)
         self._termination_event.set()
+        self._log.info("_child_process is_alive: %s, target_log_file: %s",
+                       self._child_process.is_alive(), self.target_log_file)
         self._child_process.terminate()
+        self._log.info("_child_process terminated, is_alive?: %s, target_log_file: %s",
+                       self._child_process.is_alive(), self.target_log_file)
         self._child_process.join(timeout=timeout)
         if self._child_process.is_alive():
             self._child_process.kill()  # pylint: disable=no-member
@@ -89,10 +112,16 @@ class SSHLoggerBase(LoggerBase):
     def _journal_thread(self) -> None:
         read_from_timestamp = None
         while not self._termination_event.is_set():
+            self._log.info("Check remoter ready. target_log_file: %s", self.target_log_file)
             if self._is_ready_to_retrieve():
+                self._log.info("Remoter is ready. target_log_file: %s", self.target_log_file)
+                self._log.info("Start retrieve. target_log_file: %s", self.target_log_file)
                 self._retrieve(since=read_from_timestamp)
                 read_from_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                self._log.info("read_from_timestamp: %s. target_log_file: %s",
+                               read_from_timestamp, self.target_log_file)
             else:
+                self._log.info("Sleep. target_log_file: %s", self.target_log_file)
                 time.sleep(self.READINESS_CHECK_DELAY)
 
     def _is_ready_to_retrieve(self) -> bool:
