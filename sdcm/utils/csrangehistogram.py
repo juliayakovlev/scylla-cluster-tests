@@ -164,13 +164,16 @@ class _CSRangeHistogramBuilder:
         """
         Build Range Histogram Summary from provided hdr logs files path
         """
-        with ProcessPoolExecutor(max_workers=len(self.hdr_tags)) as executor:
-            futures = [
-                executor.submit(self.build_histogram_summary_by_tag, path, tag) for tag in self.hdr_tags]
+        # with ProcessPoolExecutor(max_workers=len(self.hdr_tags)) as executor:
+        #     futures = [
+        #         executor.submit(self.build_histogram_summary_by_tag, path, tag) for tag in self.hdr_tags]
         scan_results = {}
-        for future in futures:
-            if result := future.result():
-                scan_results.update(result)
+        for tag in self.hdr_tags:
+            scan_results.update(self.build_histogram_summary_by_tag(path, tag))
+
+        # for future in futures:
+        #     if result := future.result():
+        #         scan_results.update(result)
         return [scan_results]
 
     def build_histograms_summary_with_interval(self, path: str, interval=TIME_INTERVAL) -> list[dict[str, dict[str, int]]]:  # pylint: disable=too-many-locals
@@ -276,6 +279,7 @@ class _CSRangeHistogramBuilder:
             return _CSRangeHistogram(start_time=0, end_time=0, histogram=None, hdr_tag=None)
 
         histogram = _CSHistogram()
+        # hdr_tag = "READ-wt"
         histogram.set_tag(hdr_tag)
         tag_not_found, file_with_correct_time_interval = analyze_hdr_file()
 

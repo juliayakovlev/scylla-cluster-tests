@@ -798,12 +798,16 @@ class BaseNode(AutoSshContainerMixin):  # pylint: disable=too-many-instance-attr
         else:
             raise ValueError(f"Unsupported OS [{self.distro}]")
 
+        self.log.info("OSS command: %s", oss_command)
+        self.log.info("Ent command: %s", enterprise_command)
         oss_installed = self.remoter.sudo(oss_command, ignore_status=True).ok
         enterprise_installed = "scylla-enterprise" in self.remoter.sudo(enterprise_command, ignore_status=True).stdout
+        self.log.info("Ent command result: %s", enterprise_installed)
         if oss_installed or enterprise_installed:
             _is_enterprise = enterprise_installed
         else:
             raise NoValue
+        self.log.info("_is_enterprise: %s", _is_enterprise)
 
         return _is_enterprise
 
@@ -2131,9 +2135,10 @@ class BaseNode(AutoSshContainerMixin):  # pylint: disable=too-many-instance-attr
         if self.distro.is_rhel_like or self.distro.is_sles:
             result = self.remoter.run(f'rpm -q {self.scylla_pkg()}', verbose=False, ignore_status=True)
         elif self.distro.is_ubuntu or self.distro.is_debian:
-            result = self.remoter.run(f'dpkg-query --status {self.scylla_pkg()}', verbose=False, ignore_status=True)
+            result = self.remoter.run(f'dpkg-query --status {self.scylla_pkg()}', verbose=True, ignore_status=True)
         else:
             raise ValueError(f"Unsupported Linux distribution: {self.distro}")
+        self.log .info("is_scylla_installed: %s, %s, %s", result.stdout, result.stderr, result.exit_status)
         if result.exit_status == 0:
             return True
         elif raise_if_not_installed:
