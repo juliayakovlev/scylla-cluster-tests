@@ -16,11 +16,7 @@ def call(List base_versions_list, String linux_distro, String new_scylla_repo, S
         }
 
     }
-    if (new_scylla_repo.contains('enterprise')) {
-        return base_versions_list
-    } else {
-        return base_versions_list.findAll{ ! is_enterprise_version(it) }
-    }
+    return base_versions_list
 }
 
 def is_enterprise_version(String version) {
