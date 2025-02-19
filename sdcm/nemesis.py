@@ -3450,34 +3450,35 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             return f'snapshot {selected_keyspace} -cf {tables}'
 
         functions_map = [(_few_tables,), (_full_snapshot,), (_ks_snapshot, True), (_ks_snapshot, False)]
-        snapshot_option = random.choice(functions_map)
+        # snapshot_option = random.choice(functions_map)
+        for snapshot_option in functions_map:
+            try:
+                nodetool_cmd = snapshot_option[0]() if len(
+                    snapshot_option) == 1 else snapshot_option[0](snapshot_option[1])
+                if not nodetool_cmd:
+                    raise ValueError("Failed to get nodetool command.")
+            except Exception as exc:  # pylint: disable=broad-except  # noqa: BLE001
+                raise ValueError(f"Failed to get nodetool command. Error: {exc}") from exc
 
-        try:
-            nodetool_cmd = snapshot_option[0]() if len(snapshot_option) == 1 else snapshot_option[0](snapshot_option[1])
-            if not nodetool_cmd:
-                raise ValueError("Failed to get nodetool command.")
-        except Exception as exc:  # pylint: disable=broad-except  # noqa: BLE001
-            raise ValueError(f"Failed to get nodetool command. Error: {exc}") from exc
+            self.log.debug(f'Take snapshot with command: {nodetool_cmd}')
+            result = self.target_node.run_nodetool(nodetool_cmd)
+            self.log.debug(result)
+            if "snapshot name" not in result.stdout:
+                raise Exception(f"Snapshot name wasn't found in {nodetool_cmd} output:\n{result.stdout}")
 
-        self.log.debug(f'Take snapshot with command: {nodetool_cmd}')
-        result = self.target_node.run_nodetool(nodetool_cmd)
-        self.log.debug(result)
-        if "snapshot name" not in result.stdout:
-            raise Exception(f"Snapshot name wasn't found in {nodetool_cmd} output:\n{result.stdout}")
+            snapshot_name = re.findall(r'(\d+)', result.stdout.split("snapshot name")[1])[0]
+            result = self.target_node.run_nodetool('listsnapshots')
+            self.log.debug(result)
+            if snapshot_name in result.stdout:
+                self.log.info('Snapshot %s created' % snapshot_name)
+                snapshots_content = parse_nodetool_listsnapshots(listsnapshots_output=result.stdout)
+                snapshot_content = snapshots_content.get(snapshot_name)
+                self._validate_snapshot(nodetool_cmd=nodetool_cmd, snapshot_content=snapshot_content)
+                self.log.info('Snapshot %s validated successfully' % snapshot_name)
+            else:
+                raise Exception(f"Snapshot {snapshot_name} wasn't found in: \n{result.stdout}")
 
-        snapshot_name = re.findall(r'(\d+)', result.stdout.split("snapshot name")[1])[0]
-        result = self.target_node.run_nodetool('listsnapshots')
-        self.log.debug(result)
-        if snapshot_name in result.stdout:
-            self.log.info('Snapshot %s created' % snapshot_name)
-            snapshots_content = parse_nodetool_listsnapshots(listsnapshots_output=result.stdout)
-            snapshot_content = snapshots_content.get(snapshot_name)
-            self._validate_snapshot(nodetool_cmd=nodetool_cmd, snapshot_content=snapshot_content)
-            self.log.info('Snapshot %s validated successfully' % snapshot_name)
-        else:
-            raise Exception(f"Snapshot {snapshot_name} wasn't found in: \n{result.stdout}")
-
-        self.clear_snapshots()
+            self.clear_snapshots()
 
     # NOTE: '2023.1.rc0' is set in advance, not guaranteed to match when appears
     @scylla_versions(("4.6.rc0", None), ("2023.1.rc0", None))
