@@ -211,6 +211,17 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
         with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
             session.execute(f'DROP KEYSPACE IF EXISTS {"keyspace1"};')
 
+    @staticmethod
+    def calculate_throttle_per_loader(workload, throttle_step, num_loaders, stress_num):
+        throttle_per_loader = int(int(throttle_step) // (num_loaders * stress_num))
+        if workload.cs_cmd_tmpl[0].startswith("latte"):
+            current_throttle = f"--rate={throttle_per_loader}"
+        else:
+            # Currently focusing on cassandra-stress and other stress tools.
+            # Support for new tools will be added as it becomes available.
+            current_throttle = f"fixed={throttle_per_loader}/s"
+        return current_throttle
+
     # pylint: disable=too-many-arguments,too-many-locals
     def run_gradual_increase_load(self, workload: Workload, stress_num, num_loaders, test_name):  # noqa: PLR0914
         if workload.cs_cmd_warm_up is not None:
@@ -225,7 +236,9 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):  # py
 
         for throttle_step in workload.throttle_steps:
             self.log.info("Run cs command with rate: %s Kops", throttle_step)
-            current_throttle = f"fixed={int(int(throttle_step) // (num_loaders * stress_num))}/s" if throttle_step != "unthrottled" else ""
+            current_throttle = self.calculate_throttle_per_loader(workload, throttle_step, num_loaders, stress_num) \
+                if throttle_step != "unthrottled" else ""
+
             run_step = ((latency_calculator_decorator(legend=f"Gradual test step {throttle_step} op/s",
                                                       cycle_name=throttle_step))(self.run_step))
             results, _ = run_step(stress_cmds=workload.cs_cmd_tmpl, current_throttle=current_throttle,
