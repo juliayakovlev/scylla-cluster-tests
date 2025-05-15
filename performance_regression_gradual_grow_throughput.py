@@ -39,6 +39,21 @@ class Workload:
             self.num_threads = [self.num_threads]
 
 
+def is_latte_command(stress_cmd: str) -> bool:
+    return "latte " in stress_cmd and " run " in stress_cmd
+
+
+def process_stress_threads_number(stress_cmd: str, num_threads: int) -> int:
+    # NOTE: latte has 2 separate options - '--threads' and '--concurrency'.
+    #       CS's threads == latte threads multiple of 'concurrency'
+    #       Example: 620 CS threads = 7 latte threads with concurrency as '89' per each thread (623)
+    if is_latte_command(stress_cmd):
+        latte_threads_num = find_latte_threads_num(stress_cmd)
+        return math.ceil(num_threads / latte_threads_num)
+
+    return num_threads
+
+
 class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
     """
     This class presents new performance test that run gradual increased throughput steps.
@@ -206,8 +221,9 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
         stress_queue = []
         for stress_cmd in stress_cmds:
             params = {"round_robin": True, "stats_aggregate_cmds": False}
+            current_num_threads = process_stress_threads_number(stress_cmd, num_threads)
             stress_cmd_to_run = stress_cmd.replace(
-                "$threads", f"{num_threads}").replace("$throttle", f"{current_throttle}")
+                "$threads", f"{current_num_threads}").replace("$throttle", f"{current_throttle}")
             if step_duration is not None:
                 stress_cmd_to_run = stress_cmd_to_run.replace("$duration", step_duration)
             params.update({'stress_cmd': stress_cmd_to_run})
