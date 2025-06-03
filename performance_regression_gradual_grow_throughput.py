@@ -1,3 +1,4 @@
+import math
 import pathlib
 import time
 from enum import Enum
@@ -11,6 +12,7 @@ from performance_regression_test import PerformanceRegressionTest
 from sdcm.utils.common import skip_optional_stage
 from sdcm.sct_events import Severity
 from sdcm.sct_events.system import TestFrameworkEvent
+from sdcm.stress.latte_thread import find_latte_threads_num
 from sdcm.results_analyze import PredefinedStepsTestPerformanceAnalyzer
 from sdcm.utils.decorators import latency_calculator_decorator
 from sdcm.utils.latency import calculate_latency, analyze_hdr_percentiles
@@ -214,6 +216,7 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
             self.log.debug('collected latency values are: %s', latency_results)
             self.update({"latency_during_ops": latency_results})
             return latency_results
+        return {}
         return {step: {"step": step, "legend": "", "cycles": []}}
 
     def run_step(self, stress_cmds, current_throttle, num_threads, step_duration):
@@ -407,7 +410,8 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
         stress_queue = []
         for stress_cmd in stress_cmd_templ:
             params = {"round_robin": True, "stats_aggregate_cmds": False}
-            stress_cmd_to_run = stress_cmd.replace("$threads", str(num_threads))
+            current_num_threads = process_stress_threads_number(stress_cmd, num_threads)
+            stress_cmd_to_run = stress_cmd.replace("$threads", str(current_num_threads))
             params.update({'stress_cmd': stress_cmd_to_run})
             # Run all stress commands
             self.log.debug('RUNNING warm up stress cmd: %s', stress_cmd_to_run)
