@@ -1,8 +1,8 @@
 # Define load ops for steps
-# # For debugging, you can set a specific thread count for each step (per load).
-## The value of perf_gradual_threads[load] must be either:
-##   - a single-element list or integer (applied to all throttle steps)
-##   - a list with the same length as perf_gradual_throttle_steps[load] (one thread count per step).
-perf_gradual_threads: {"read": 620, "write": 400, "mixed": 1900}
-perf_gradual_throttle_steps: {"read": ['unthrottled_450', 'unthrottled_400','unthrottled_500', 'unthrottled_350'], "mixed": ['unthrottled_600', 'unthrottled_600', 'unthrottled_650', 'unthrottled_550'], "write": ['unthrottled_100', 'unthrottled_125', 'unthrottled_150', 'unthrottled_175', 'unthrottled_200']}  # where every value is in ops
+# For debugging, you can set a specific thread count for each step (per load).
+# The value of perf_gradual_threads[load] must be either:
+#   - a single-element list (applied to all throttle steps), or
+#   - a list with the same length as perf_gradual_throttle_steps[load] (one thread count per step).
+perf_gradual_threads: {"read": [620], "write": [400], "mixed": [1900]}
+perf_gradual_throttle_steps: {"read": ['unthrottled', 'unthrottled','unthrottled', 'unthrottled'], "mixed": ['unthrottled_600', 'unthrottled_600', 'unthrottled_650', 'unthrottled_550'], "write": ['unthrottled_100', 'unthrottled_125', 'unthrottled_150', 'unthrottled_175', 'unthrottled_200']}  # where every value is in ops
 perf_gradual_step_duration: {"read": '30m', "write": None, "mixed": '30m'}

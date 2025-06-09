@@ -2,7 +2,7 @@ import math
 import pathlib
 import time
 from enum import Enum
-from collections import defaultdict, Counter
+from collections import defaultdict
 
 import json
 from dataclasses import dataclass, replace
@@ -216,7 +216,6 @@ class PerformanceRegressionPredefinedStepsTest(PerformanceRegressionTest):
             self.log.debug('collected latency values are: %s', latency_results)
             self.update({"latency_during_ops": latency_results})
             return latency_results
-        return {}
         return {step: {"step": step, "legend": "", "cycles": []}}
 
     def run_step(self, stress_cmds, current_throttle, num_threads, step_duration):
