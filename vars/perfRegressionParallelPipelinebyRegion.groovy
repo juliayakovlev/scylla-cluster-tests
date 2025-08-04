@@ -18,14 +18,14 @@ def call(Map pipelineParams) {
             booleanParam(name: 'use_job_throttling', defaultValue: true, description: 'if true, use job throttling to limit the number of concurrent builds')
             string(name: 'labels_selector', defaultValue: '', description: 'This parameter is used for trigger with Scylla master version only. It points how to trigger the test: daily, weekly ot once in 3 weeks. Expected values: master-3weeks OR master-weekly OR master-daily')
         }
-        triggers {
-            parameterizedCron (
-                '''
-                    00 6 * * 0 %scylla_version=master:latest;labels_selector=master-weekly
-                    0 23 */21 * * %scylla_version=master:latest;labels_selector=master-3weeks
-                '''
-            )
-        }
+//         triggers {
+//             parameterizedCron (
+//                 '''
+//                     00 6 * * 0 %scylla_version=master:latest;labels_selector=master-weekly
+//                     0 23 */21 * * %scylla_version=master:latest;labels_selector=master-3weeks
+//                 '''
+//             )
+//         }
 
         stages {
             stage('Get Scylla Version') {
@@ -220,16 +220,16 @@ def call(Map pipelineParams) {
                             if (region && version && sub_tests) {
                                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                                     println("Building job: $job_name with sub_test: ${sub_tests}, region: ${region}")
-                                        build job: job_name, wait: false, parameters: [
-                                            string(name: 'scylla_version', value: image_name ? null : params.scylla_version),
-                                            string(name: 'scylla_ami_id', value: image_name ? image_name : null),
-                                            string(name: 'base_versions', value: rolling_upgrade_test ? params.base_versions : null),
-                                            string(name: 'provision_type', value: 'on_demand'),
-                                            string(name: 'new_scylla_repo', value: rolling_upgrade_test ? params.new_scylla_repo : null),
-                                            booleanParam(name: 'use_job_throttling', value: params.use_job_throttling),
-                                            string(name: 'sub_tests', value: groovy.json.JsonOutput.toJson(sub_tests)),
-                                            string(name: 'region', value: region)
-                                        ]
+//                                         build job: job_name, wait: false, parameters: [
+//                                             string(name: 'scylla_version', value: image_name ? null : params.scylla_version),
+//                                             string(name: 'scylla_ami_id', value: image_name ? image_name : null),
+//                                             string(name: 'base_versions', value: rolling_upgrade_test ? params.base_versions : null),
+//                                             string(name: 'provision_type', value: 'on_demand'),
+//                                             string(name: 'new_scylla_repo', value: rolling_upgrade_test ? params.new_scylla_repo : null),
+//                                             booleanParam(name: 'use_job_throttling', value: params.use_job_throttling),
+//                                             string(name: 'sub_tests', value: groovy.json.JsonOutput.toJson(sub_tests)),
+//                                             string(name: 'region', value: region)
+//                                         ]
                                     }
                                 }
                             }
