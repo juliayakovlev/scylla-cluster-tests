@@ -34,6 +34,7 @@
 - IsolateNodeWithProcessSignalNemesis
 - LoadAndStreamMonkey
 - MajorCompactionMonkey
+- MdcChaosMonkey
 - MemoryStressMonkey
 - MgmtBackup
 - MgmtBackupSpecificKeyspaces

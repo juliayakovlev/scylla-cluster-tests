@@ -792,6 +792,7 @@ class Nemesis(NemesisFlags):
 
     @target_all_nodes
     def disrupt_soft_reboot_node(self):
+        self.switch_target_node_to_loader_rack()
         self.reboot_node(target_node=self.target_node, hard=False)
         self.target_node.wait_node_fully_start()
 
@@ -1224,8 +1225,21 @@ class Nemesis(NemesisFlags):
                 self.nodetool_cleanup_on_all_nodes_parallel()
         return new_node
 
+    def switch_target_node_to_loader_rack(self):
+        if self.cluster.params.get("rack_aware_loader") and self.target_node.parent_cluster.racks_count > 1:
+            loader_rack = self.loaders.nodes[0].rack
+            target_node_rack = [node.rack for node in self.cluster.nodes if node.rack == loader_rack][0]
+            self.set_target_node(rack=target_node_rack)
+            self.log.info("Target node rack %s, loader rack %s", self.target_node.rack, loader_rack)
+
+        # if self.cluster.params.get("rack_aware_loader") and self.target_node.parent_cluster.racks_count > 1:
+        #     loader_rack = self.loaders.nodes[0].rack
+        #     self.set_target_node(rack=loader_rack)
+        #     self.log.info("Target node rack %s, loader rack %s", self.target_node.rack, loader_rack)
+
     @target_all_nodes
     def disrupt_nodetool_decommission(self, add_node=True):
+        self.switch_target_node_to_loader_rack()
         return self._nodetool_decommission(add_node=add_node)
 
     @target_all_nodes
@@ -1474,6 +1488,7 @@ class Nemesis(NemesisFlags):
 
     @target_all_nodes
     def disrupt_terminate_and_replace_node(self):
+        self.switch_target_node_to_loader_rack()
         self._terminate_and_replace_node()
 
     def _terminate_and_replace_node(self):
@@ -5393,7 +5408,7 @@ class Nemesis(NemesisFlags):
         if self._is_it_on_kubernetes():
             raise UnsupportedNemesis("Skip test for K8S because no supported yet")
 
-        self.switch_target_node_to_another_rack()
+        # self.switch_target_node_to_another_rack()
 
         keyspace_name = "banned_keyspace"
         table_name = "table1"
@@ -6124,17 +6139,27 @@ class ScyllaCloudLimitedChaosMonkey(Nemesis):
 
 class MdcChaosMonkey(Nemesis):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.disruptions_list = self.build_disruptions_by_name([
-            'disrupt_destroy_data_then_repair',
-            'disrupt_no_corrupt_repair',
-            'disrupt_nodetool_decommission'
-        ])
-        self.disruptions_list = self.shuffle_list_of_disruptions(self.disruptions_list)
+    # def __init__(self, *args, **kwargs):
+    #     super().__init__(*args, **kwargs)
+    #     # self.disruptions_list = self.build_disruptions_by_name([
+    #     #     'disrupt_nodetool_decommission',
+    #     #     'disrupt_terminate_and_replace_node',
+    #     #     'disrupt_rolling_restart_cluster',
+    #     #     'disrupt_soft_reboot_node'
+    #     #     # 'disrupt_destroy_data_then_repair',
+    #     #     # 'disrupt_no_corrupt_repair',
+    #     #     # 'disrupt_nodetool_decommission'
+    #     # ])
+    #     self.disruptions_list = [self.disrupt_nodetool_decommission, self.disrupt_terminate_and_replace_node,
+    #                              self.disrupt_rolling_restart_cluster, self.disrupt_soft_reboot_node]
+    # self.disruptions_list = self.shuffle_list_of_disruptions(self.disruptions_list)
 
     def disrupt(self):
-        self.call_next_nemesis()
+        self.disrupt_nodetool_decommission()
+        self.disrupt_terminate_and_replace_node()
+        self.disrupt_rolling_restart_cluster()
+        self.disrupt_soft_reboot_node()
+        # self.call_next_nemesis()
 
 
 class ModifyTableMonkey(Nemesis):
