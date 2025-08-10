@@ -18,14 +18,14 @@ def call(Map pipelineParams) {
             booleanParam(name: 'use_job_throttling', defaultValue: true, description: 'if true, use job throttling to limit the number of concurrent builds')
             string(name: 'labels_selector', defaultValue: '', description: 'This parameter is used for trigger with Scylla master version only. It points how to trigger the test: daily, weekly ot once in 3 weeks. Expected values: master-3weeks OR master-weekly OR master-daily')
         }
-        triggers {
-            parameterizedCron (
-                '''
-                    00 6 * * 0 %scylla_version=master:latest;labels_selector=master-weekly
-                    0 23 */21 * * %scylla_version=master:latest;labels_selector=master-3weeks
-                '''
-            )
-        }
+//         triggers {
+//             parameterizedCron (
+//                 '''
+//                     00 6 * * 0 %scylla_version=master:latest;labels_selector=master-weekly
+//                     0 23 */21 * * %scylla_version=master:latest;labels_selector=master-3weeks
+//                 '''
+//             )
+//         }
 
         stages {
             stage('Get Scylla Version') {
@@ -42,6 +42,20 @@ def call(Map pipelineParams) {
 
                         }
                         def testRegionMatrix = [
+                            [
+                                job_name: 'scylla-staging/yulia/performance/perf-regression-predefined-throughput-steps-sanity-vnodes',
+                                region: 'us-east-1',
+                                versions: ['2024.1', '2024.2', '2025.1', '2025.2', 'master'],
+                                sub_tests: ['"test_read_gradual_increase_load"'],
+                                labels: ['master-test']
+                            ],
+                            [
+                                job_name: 'scylla-staging/yulia/performance/scylla-enterprise-perf-regression-latency-650gb-during-rolling-upgrade',
+                                region: 'us-east-1',
+                                versions: ['2024.1', '2024.2', '2025.1', '2025.2', 'master'],
+                                sub_tests: ['"test_latency_mixed_with_upgrade"'],
+                                labels: ['master-test']
+                            ],
                             [
                                 job_name: 'scylla-enterprise/perf-regression/scylla-enterprise-perf-regression-predefined-throughput-steps-vnodes',
                                 region: 'us-east-1',
@@ -222,7 +236,7 @@ def call(Map pipelineParams) {
                                     println("Building job: $job_name with sub_test: ${sub_tests}, region: ${region}")
                                         build job: job_name, wait: false, parameters: [
                                             string(name: 'scylla_version', value: image_name ? null : params.scylla_version),
-                                            string(name: 'scylla_ami_id', value: image_name ? image_name : null),
+                                            string(name: 'scylla_ami_id', value: rolling_upgrade_test ? null : (image_name ? image_name : null)),),
                                             string(name: 'base_versions', value: rolling_upgrade_test ? params.base_versions : null),
                                             string(name: 'provision_type', value: 'on_demand'),
                                             string(name: 'new_scylla_repo', value: rolling_upgrade_test ? params.new_scylla_repo : null),
