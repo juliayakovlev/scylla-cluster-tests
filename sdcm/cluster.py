@@ -2839,12 +2839,15 @@ class BaseNode(AutoSshContainerMixin):
         with self.parent_cluster.cql_connection_patient_exclusive(self) as session:
             result = session.execute(f"select {', '.join(columns)} from system.peers")
             cql_results = result.all()
+        self.log.debug("get_peers_info: %s", [row.peer for row in cql_results])
         err = ''
         node_ip_map = self.parent_cluster.get_ip_to_node_map()
         for row in cql_results:
             peer = row.peer
             try:
+                self.log.debug("Before to_inet_ntop_format: %s", row.peer)
                 peer = to_inet_ntop_format(row.peer)
+                self.log.debug("After to_inet_ntop_format: %s", peer)
             except ValueError as exc:
                 current_err = f"Peer '{peer}' is not an IP address, err: {exc}\n"
                 LOGGER.warning(current_err)
@@ -2862,6 +2865,7 @@ class BaseNode(AutoSshContainerMixin):
             LOGGER.error(
                 "No data, no errors. Check the output from the cql command for the correctness:\n%s",
                 cql_results)
+        self.log.debug("peers_details: %s", peers_details)
         return peers_details
 
     @retrying(n=10, sleep_time=5, raise_on_exceeded=False)
