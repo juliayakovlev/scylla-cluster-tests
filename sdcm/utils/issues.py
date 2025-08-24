@@ -136,6 +136,8 @@ class SkipPerIssues:
             return self.github.get_repo(f'{issue_parsed.user_id}/{issue_parsed.repo_id}', lazy=True).get_issue(issue_parsed.issue_id)
         except UnknownObjectException:
             logging.warning("couldn't find issue: %s", issue)
+            logging.debug("self.github: %s", self.github)
+            logging.debug("self.github type: %s", type(self.github))
             TestFrameworkEvent(source=self.__class__.__name__,
                                message=f"couldn't find issue: {issue}",
                                severity=Severity.WARNING,
