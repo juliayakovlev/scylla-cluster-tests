@@ -18,14 +18,14 @@ def call(Map pipelineParams) {
             booleanParam(name: 'use_job_throttling', defaultValue: true, description: 'if true, use job throttling to limit the number of concurrent builds')
             string(name: 'labels_selector', defaultValue: '', description: 'This parameter is used for trigger with Scylla master version only. It points how to trigger the test: daily, weekly ot once in 3 weeks. Expected values: master-3weeks OR master-weekly OR master-daily')
         }
-        triggers {
-            parameterizedCron (
-                '''
-                    00 6 * * 0 %scylla_version=master:latest;labels_selector=master-weekly
-                    0 23 */21 * * %scylla_version=master:latest;labels_selector=master-3weeks
-                '''
-            )
-        }
+//         triggers {
+//             parameterizedCron (
+//                 '''
+//                     00 6 * * 0 %scylla_version=master:latest;labels_selector=master-weekly
+//                     0 23 */21 * * %scylla_version=master:latest;labels_selector=master-3weeks
+//                 '''
+//             )
+//         }
 
         stages {
             stage('Get Scylla Version') {
@@ -189,6 +189,8 @@ def call(Map pipelineParams) {
                                  def sub_tests = []
                                  def region = null
                                  def image_name_for_job = null
+                                 def rolling_upgrade_test = null
+                                 def microbenchmark = null
                                  if (scylla_version == "master" && !image_name){
                                     region = entry.region ?: 'us-east-1'
                                     def output = sh(script: "./docker/env/hydra.sh list-images -c ${cloud_provider} -r ${region} -o text", returnStdout: true).trim()
@@ -204,7 +206,6 @@ def call(Map pipelineParams) {
                                  }
 
                                 if (entry.job_name == job_name) {
-                                    println("job_name: ${entry.job_name}, sub_tests: ${entry.sub_tests}")
                                     for (def ver in entry.versions) {
                                         if (scylla_version?.trim() == ver || scylla_version?.trim().startsWith(ver + ".")) {
                                             version = params.scylla_version
@@ -217,11 +218,12 @@ def call(Map pipelineParams) {
                                         region = entry.region
                                         sub_tests = entry.sub_tests
                                         println("Found for job $job_name: region : $region, version: $version, sub_tests: $sub_tests")
-                                        break
+                                    } else {
+                                        continue
                                     }
                                     rolling_upgrade_test = entry.rolling_upgrade_test
                                     microbenchmark = entry.microbenchmark
-                                    if (rolling_upgrade_test || entry.microbenchmark) {
+                                    if (rolling_upgrade_test || microbenchmark) {
                                         image_name_for_job = null
                                     } else {
                                         image_name_for_job = image_name
@@ -232,16 +234,16 @@ def call(Map pipelineParams) {
                                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                                     println("Building job: $job_name with sub_test: ${sub_tests}, region: ${region}, image_name_for_job: ${image_name_for_job}, scylla_version: ${version}")
                                     println("Send to job: scylla_version: ${rolling_upgrade_test ? null : (image_name_for_job ? null : params.scylla_version)}; scylla_ami_id: ${image_name_for_job ? image_name_for_job : null}")
-                                        build job: job_name, wait: false, parameters: [
-                                            string(name: 'scylla_version', value: rolling_upgrade_test ? null : (image_name_for_job ? null : params.scylla_version)),
-                                            string(name: 'scylla_ami_id', value: image_name_for_job ? image_name_for_job : null),
-                                            string(name: 'base_versions', value: rolling_upgrade_test ? params.base_versions : null),
-                                            string(name: 'provision_type', value: 'on_demand'),
-                                            string(name: 'new_scylla_repo', value: rolling_upgrade_test ? params.new_scylla_repo : null),
-                                            booleanParam(name: 'use_job_throttling', value: params.use_job_throttling),
-                                            string(name: 'sub_tests', value: groovy.json.JsonOutput.toJson(sub_tests)),
-                                            string(name: 'region', value: region)
-                                        ]
+//                                         build job: job_name, wait: false, parameters: [
+//                                             string(name: 'scylla_version', value: rolling_upgrade_test ? null : (image_name_for_job ? null : params.scylla_version)),
+//                                             string(name: 'scylla_ami_id', value: image_name_for_job ? image_name_for_job : null),
+//                                             string(name: 'base_versions', value: rolling_upgrade_test ? params.base_versions : null),
+//                                             string(name: 'provision_type', value: 'on_demand'),
+//                                             string(name: 'new_scylla_repo', value: rolling_upgrade_test ? params.new_scylla_repo : null),
+//                                             booleanParam(name: 'use_job_throttling', value: params.use_job_throttling),
+//                                             string(name: 'sub_tests', value: groovy.json.JsonOutput.toJson(sub_tests)),
+//                                             string(name: 'region', value: region)
+//                                         ]
                                     }
                                 }
                             }
