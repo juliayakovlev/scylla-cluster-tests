@@ -5408,6 +5408,20 @@ class Nemesis(NemesisFlags):
                 LOGGER.debug("Drop keyspace %s", keyspace_name)
                 session.execute(f"DROP KEYSPACE IF EXISTS {keyspace_name}", timeout=300)
 
+        def write_cql_result(res, path: str):
+            """Write a CQL select result to a file.
+
+            :param res: cql results
+            :type res: ResultSet
+            :param path: path to file
+            :type path: str
+            """
+            with open(path, 'w', encoding="utf-8") as file:
+                for row in res:
+                    file.write(str(row) + '\n')
+                file.flush()
+                os.fsync(file.fileno())
+
         simulate_node_unavailability = node_operations.block_scylla_ports if use_iptables else node_operations.pause_scylla_with_sigstop
         with self.node_allocator.run_nemesis(
                 nemesis_label=f"{simulate_node_unavailability.__name__}") as working_node, ExitStack() as stack:
@@ -5430,6 +5444,23 @@ class Nemesis(NemesisFlags):
                 working_node.run_nodetool(f"removenode {target_host_id}", retry=0, long_running=True)
                 assert node_operations.is_node_removed_from_cluster(removed_node=self.target_node, verification_node=working_node), \
                     f"Node {self.target_node.name} with host id {target_host_id} was not removed. See log errors"
+
+                for node in self.cluster.nodes:
+                    self.log.info('Fetching data on node %s', node.name)
+                    with self.cluster.cql_connection_patient_exclusive(node=self.target_node) as sess:
+                        self.log.info('Fetching system.tablets table...')
+                        res = sess.execute(SimpleStatement('select * from system.tablets',
+                                                           consistency_level=ConsistencyLevel.LOCAL_ONE))
+                        write_cql_result(res, os.path.join(node.logdir, 'system_tablets.log'))
+
+                        self.log.info('Fetching system.peers table...')
+                        res = sess.execute(SimpleStatement('select * from system.peers',
+                                                           consistency_level=ConsistencyLevel.LOCAL_ONE))
+                        write_cql_result(res, os.path.join(node.logdir, 'system_peers.log'))
+
+                        self.log.info('Fetching nodetool status ...')
+                        nodetool_status = self.cluster.get_nodetool_status(node)
+                        write_cql_result(nodetool_status, os.path.join(node.logdir, 'nodetool_status.log'))
 
                 # Context manager at exit  start scylla on target node.
                 # But node already removed from cluster. So any operations from it
