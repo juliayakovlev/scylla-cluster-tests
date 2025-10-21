@@ -443,6 +443,7 @@ class LatencyDuringOperationsPerformanceAnalyzer(BaseResultsAnalyzer):
         if not doc:
             raise ValueError(f'Cannot find test by id: {test_id}!')
 
+        LOGGER.debug("Test document found")
         full_test_name = doc["_source"]["test_details"]["test_name"]
         test_name = full_test_name.split('.')[-1]  # Example: longevity_test.LongevityTest.test_custom_time
         test_start_time = datetime.utcfromtimestamp(float(doc["_source"]["test_details"]["start_time"]))
@@ -472,21 +473,24 @@ class LatencyDuringOperationsPerformanceAnalyzer(BaseResultsAnalyzer):
             Severity.ERROR.name: error_events_summary[Severity.ERROR.name] if Severity.ERROR.name in error_events_summary else 0,
             Severity.CRITICAL.name: critical_events_summary[Severity.CRITICAL.name] if Severity.CRITICAL.name in critical_events_summary else 0
         }
-
+        LOGGER.debug("Events summary: %s", events_summary)
         reactor_stall_events = self.get_reactor_stall_events()
         reactor_stall_events_summary = {Severity.DEBUG.name: len(reactor_stall_events)}
         kernel_callstack_events = self.get_kernel_callstack_events()
         kernel_callstack_events_summary = {Severity.DEBUG.name: len(kernel_callstack_events)}
-
+        LOGGER.debug("After kernel_callstack_events_summary")
         config_files = ' '.join(doc["_source"]["setup_details"]["config_files"])
         search_size = re.search(r'(\d.*(?#t|g)b)', config_files)
         dataset_size = search_size.group() if search_size else 'unknown size'
-
+        LOGGER.debug("before subject")
         subject = (f'{self._get_email_tags(doc, is_gce)} Performance Regression Compare Results '
                    f'({email_subject_postfix} {dataset_size}) -'
                    f' {test_name} - {test_version} - {str(test_start_time)}')
+        LOGGER.debug("subject: %s", subject)
         best_results_per_nemesis = self._get_best_per_nemesis_for_each_version(doc, is_gce)
+        LOGGER.debug("best_results_per_nemesis: %s", best_results_per_nemesis)
         self._compare_current_best_results_average(data, best_results_per_nemesis)
+        LOGGER.debug("After _compare_current_best_results_average")
 
         results = dict(
             events_summary=events_summary,
@@ -510,12 +514,15 @@ class LatencyDuringOperationsPerformanceAnalyzer(BaseResultsAnalyzer):
             node_benchmarks=node_benchmarks,
             best_stat_per_version=best_results_per_nemesis,
         )
+        LOGGER.debug("Before prepare_attachment_files_for_email")
         attachment_file = self.prepare_attachment_files_for_email(results)
-
+        LOGGER.debug("After prepare_attachment_files_for_email")
         email_data = {'email_body': results,
                       'attachments': attachment_file,
                       'template': self._email_template_fp}
+        LOGGER.debug("Before send_email")
         self.save_email_data_file(subject, email_data, file_path='email_data.json')
+        LOGGER.debug("Email data saved to file")
 
         return True
 
