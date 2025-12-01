@@ -4155,6 +4155,7 @@ def wait_for_init_wrap(method):
                 if setup_exception:
                     raise NodeSetupFailed(
                         node=node, error_msg=setup_exception[0], traceback_str=setup_exception[1])
+                cl_inst.log.info("Node %s setup/startup completed successfully.", node)
                 results.append(node)
                 cl_inst.log.info("(%d/%d) nodes ready, node %s. Time elapsed: %d s",
                                  len(results), len(node_list), str(node), int(time_elapsed))
