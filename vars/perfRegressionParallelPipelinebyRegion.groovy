@@ -242,14 +242,14 @@ def call(Map pipelineParams) {
                         def image_name = null
                         for (job_name in jobs_names) {
                             println("Job name: $job_name")
+                            def version = null
+                            def sub_tests = []
+                            def region = null
+                            def image_name_for_job = null
+                            def rolling_upgrade_test = null
+                            def microbenchmark = null
                             for (def entry in testRegionMatrix) {
                                  def cloud_provider = entry.cloud_provider ?: 'aws'
-                                 def version = null
-                                 def sub_tests = []
-                                 def region = null
-                                 def image_name_for_job = null
-                                 def rolling_upgrade_test = null
-                                 def microbenchmark = null
                                  if (scylla_version == "master" && !image_name){
                                     region = entry.region ?: 'us-east-1'
                                     def output = sh(script: "./docker/env/hydra.sh list-images -c ${cloud_provider} -r ${region} -o json", returnStdout: true).trim()
@@ -265,18 +265,21 @@ def call(Map pipelineParams) {
                                  }
 
                                 if (entry.job_name == job_name) {
+                                    def entry_version_matched = false
                                     if (entry.containsKey('ignore_versions')) {
                                         if (!isVersionIgnored(scylla_version, entry.ignore_versions)) {
                                             version = params.scylla_version
+                                            entry_version_matched = true
                                         }
                                     } else {
                                         for (def ver in (entry.versions ?: [])) {
                                             if (scylla_version?.trim() == ver || scylla_version?.trim().startsWith(ver + ".")) {
                                                 version = params.scylla_version
+                                                entry_version_matched = true
                                             }
                                         }
                                     }
-                                    if (version) {
+                                    if (entry_version_matched) {
                                         if (labels_selector && !(entry.labels.contains(labels_selector))) {
                                             println("Skipping job $job_name for labels_selector: $labels_selector")
                                             continue
@@ -290,41 +293,38 @@ def call(Map pipelineParams) {
                                         region = entry.region
                                         sub_tests = entry.sub_tests
                                         println("Found for job $job_name: region : $region, version: $version, sub_tests: $sub_tests")
-                                    } else {
-                                        continue
-                                    }
-                                    rolling_upgrade_test = entry.rolling_upgrade_test
-                                    microbenchmark = entry.microbenchmark
-                                    if (rolling_upgrade_test || microbenchmark) {
-                                        image_name_for_job = null
-                                    } else {
-                                        image_name_for_job = image_name
+                                        rolling_upgrade_test = entry.rolling_upgrade_test
+                                        microbenchmark = entry.microbenchmark
+                                        if (rolling_upgrade_test || microbenchmark) {
+                                            image_name_for_job = null
+                                        } else {
+                                            image_name_for_job = image_name
+                                        }
                                     }
                                 }
                             }
                             if (region && version && sub_tests) {
                                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                                     println("Building job: $job_name with sub_test: ${sub_tests}, region: ${region}, image_name_for_job: ${image_name_for_job}, scylla_version: ${version}")
-                                    println("Send to job: scylla_version: ${rolling_upgrade_test ? null : (image_name_for_job ? null : params.scylla_version)}; scylla_ami_id: ${image_name_for_job ? image_name_for_job : null}")
-                                        build job: job_name, wait: false, parameters: [
-                                            string(name: 'scylla_version', value: rolling_upgrade_test ? null : (image_name_for_job ? null : params.scylla_version)),
-                                            string(name: 'scylla_ami_id', value: image_name_for_job ? image_name_for_job : null),
-                                            string(name: 'base_versions', value: rolling_upgrade_test ? params.base_versions : null),
-                                            string(name: 'provision_type', value: 'on_demand'),
-                                            string(name: 'new_scylla_repo', value: rolling_upgrade_test ? params.new_scylla_repo : null),
-                                            booleanParam(name: 'use_job_throttling', value: params.use_job_throttling),
-                                            string(name: 'sub_tests', value: groovy.json.JsonOutput.toJson(sub_tests)),
-                                            string(name: 'region', value: region),
-                                            string(name: 'requested_by_user', value: params.requested_by_user),
-                                            string(name: 'billing_project', value: params.billing_project)
-                                        ]
+                                    println("Send to job: scylla_version: ${rolling_upgrade_test ? null : (image_name_for_job ? null : params.scylla_version)}; scylla_ami_id: ${image_name_for_job ? image_name_for_job : null}; new_scylla_repo: ${rolling_upgrade_test ? params.new_scylla_repo : null}")
+//                                         build job: job_name, wait: false, parameters: [
+//                                             string(name: 'scylla_version', value: rolling_upgrade_test ? null : (image_name_for_job ? null : params.scylla_version)),
+//                                             string(name: 'scylla_ami_id', value: image_name_for_job ? image_name_for_job : null),
+//                                             string(name: 'base_versions', value: rolling_upgrade_test ? params.base_versions : null),
+//                                             string(name: 'provision_type', value: 'on_demand'),
+//                                             string(name: 'new_scylla_repo', value: rolling_upgrade_test ? params.new_scylla_repo : null),
+//                                             booleanParam(name: 'use_job_throttling', value: params.use_job_throttling),
+//                                             string(name: 'sub_tests', value: groovy.json.JsonOutput.toJson(sub_tests)),
+//                                             string(name: 'region', value: region),
+//                                             string(name: 'requested_by_user', value: params.requested_by_user),
+//                                             string(name: 'billing_project', value: params.billing_project)
+//                                         ]
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
         }
     }
 }
