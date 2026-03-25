@@ -2514,8 +2514,10 @@ class SCTConfiguration(BaseModel):
                 if backend == "aws" and len(parts) <= 2:
                     # Auto-detect arch from AWS instance type when not explicitly specified
                     try:
-                        arch = get_arch_from_instance_type(
-                            self.get("instance_type_db"), region_name=region_names[0])
+                        arch = get_arch_from_instance_type(self.get("instance_type_db"), region_name=region_names[0])
+                        # Normalize AWS arch naming ("arm64") to Scylla package naming ("aarch64")
+                        if arch == "arm64":
+                            arch = "aarch64"
                     except Exception:  # noqa: BLE001
                         self.log.warning("Could not detect architecture from instance type, defaulting to x86_64")
                 elif backend != "aws" and len(parts) <= 2:
@@ -2523,13 +2525,33 @@ class SCTConfiguration(BaseModel):
                     self.log.warning(
                         "Architecture auto-detection is only supported on AWS backend. "
                         "Defaulting to '%s'. Use 'relocatable:<branch>:<arch>' format to specify "
-                        "architecture explicitly, e.g. 'relocatable:master:aarch64'", arch)
+                        "architecture explicitly, e.g. 'relocatable:master:aarch64'",
+                        arch,
+                    )
                 unified_url = latest_unified_package(arch=arch, branch=branch)
                 self.log.info("Resolved unified package URL: %s", unified_url)
                 self["unified_package"] = unified_url
+                # Auto-set ami_id_db_scylla to Ubuntu 24.04 base AMI for AWS when not already set
+                if backend == "aws" and not self.get("ami_id_db_scylla"):
+                    ubuntu_ssm_map = {
+                        "x86_64": "resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
+                        "aarch64": "resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id",
+                    }
+                    ami_ssm = ubuntu_ssm_map.get(arch, ubuntu_ssm_map["x86_64"])
+                    self.log.info(
+                        "relocatable: auto-setting ami_id_db_scylla to Ubuntu 24.04 base AMI for arch=%s: %s",
+                        arch,
+                        ami_ssm,
+                    )
+                    self["ami_id_db_scylla"] = convert_name_to_ami_if_needed(ami_ssm, tuple(region_names))
                 self["scylla_version"] = ""
+                scylla_version = ""
 
-            if self.get("cluster_backend") in ["docker", "k8s-eks", "k8s-gke"] and not self.get("docker_image"):
+            if (
+                scylla_version
+                and self.get("cluster_backend") in ["docker", "k8s-eks", "k8s-gke"]
+                and not self.get("docker_image")
+            ):
                 self["docker_image"] = get_scylla_docker_repo_from_version(scylla_version)
             if self.get("cluster_backend") in (
                 "docker",
@@ -2541,6 +2563,8 @@ class SCTConfiguration(BaseModel):
             ):
                 self.log.info("Assume that Scylla Docker image has repo file pre-installed.")
                 self._replace_docker_image_latest_tag()
+            elif not scylla_version:
+                pass  # relocatable: was handled above, skip version resolution
             elif not self.get("ami_id_db_scylla") and self.get("cluster_backend") == "aws":
                 ami_list = []
                 for region in region_names:
@@ -2678,6 +2702,35 @@ class SCTConfiguration(BaseModel):
                         )
                         target_ami_list.append(ami)
                     self.target_db_image_ids = [ami.image_id for ami in target_ami_list]
+
+        # 6.0.1) when unified_package is used (either directly or resolved from relocatable:),
+        #        override use_preinstalled_scylla and ami_db_scylla_user for AWS
+        if self.get("unified_package"):
+            self.log.info("unified_package is set, forcing use_preinstalled_scylla=False")
+            self["use_preinstalled_scylla"] = False
+            if self.get("cluster_backend") == "aws":
+                self.log.info("unified_package is set on AWS backend, forcing ami_db_scylla_user='ubuntu'")
+                self["ami_db_scylla_user"] = "ubuntu"
+                if not self.get("ami_id_db_scylla"):
+                    try:
+                        arch = get_arch_from_instance_type(self.get("instance_type_db"), region_name=region_names[0])
+                        # Normalize AWS arch naming ("arm64") to Scylla package naming ("aarch64")
+                        if arch == "arm64":
+                            arch = "aarch64"
+                    except Exception:  # noqa: BLE001
+                        arch = "x86_64"
+                        self.log.warning("Could not detect architecture from instance type, defaulting to x86_64")
+                    ubuntu_ssm_map = {
+                        "x86_64": "resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
+                        "aarch64": "resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id",
+                    }
+                    ami_ssm = ubuntu_ssm_map.get(arch, ubuntu_ssm_map["x86_64"])
+                    self.log.info(
+                        "unified_package: auto-setting ami_id_db_scylla to Ubuntu 24.04 base AMI for arch=%s: %s",
+                        arch,
+                        ami_ssm,
+                    )
+                    self["ami_id_db_scylla"] = convert_name_to_ami_if_needed(ami_ssm, tuple(region_names))
 
         # 6.1) handle oracle_scylla_version if exists
         if (oracle_scylla_version := self.get("oracle_scylla_version")) and self.get("db_type") == "mixed_scylla":
@@ -3462,29 +3515,34 @@ class SCTConfiguration(BaseModel):
         if not self.get("use_preinstalled_scylla") and not backend == "baremetal" and not self.get("unified_package"):
             options_must_exist += ["scylla_repo"]
 
-        if self.get("db_type") == "cloud_scylla":
-            options_must_exist += ["cloud_cluster_id"]
-        elif backend == "aws":
-            options_must_exist += ["ami_id_db_scylla"]
-        elif backend == "gce":
-            options_must_exist += ["gce_image_db"]
-        elif backend == "azure":
-            options_must_exist += ["azure_image_db"]
-        elif backend == "oci":
-            options_must_exist += ["oci_image_db"]
-        elif backend == "docker":
-            options_must_exist += ["docker_image"]
-        elif backend == "baremetal":
-            options_must_exist += ["db_nodes_public_ip"]
-        elif "k8s" in backend or backend == "xcloud":
-            options_must_exist += ["scylla_version"]
+        # When unified_package is set, backend-specific image is not required since
+        # Scylla will be installed from the unified package on top of a base OS image.
+        if not self.get("unified_package"):
+            if self.get("db_type") == "cloud_scylla":
+                options_must_exist += ["cloud_cluster_id"]
+            elif backend == "aws":
+                options_must_exist += ["ami_id_db_scylla"]
+            elif backend == "gce":
+                options_must_exist += ["gce_image_db"]
+            elif backend == "azure":
+                options_must_exist += ["azure_image_db"]
+            elif backend == "oci":
+                options_must_exist += ["oci_image_db"]
+            elif backend == "docker":
+                options_must_exist += ["docker_image"]
+            elif backend == "baremetal":
+                options_must_exist += ["db_nodes_public_ip"]
+            elif "k8s" in backend or backend == "xcloud":
+                options_must_exist += ["scylla_version"]
 
         if not options_must_exist:
             return
         assert all(self.get(o) for o in options_must_exist), (
             "scylla version/repos wasn't configured correctly\n"
             f"configure those options: {options_must_exist}\n"
-            f"and those environment variables: {['SCT_' + o.upper() for o in options_must_exist]}"
+            f"and those environment variables: {['SCT_' + o.upper() for o in options_must_exist]}\n"
+            f"unified_package={self.get('unified_package')!r}, "
+            f"use_preinstalled_scylla={self.get('use_preinstalled_scylla')!r}"
         )
 
     def _check_partition_range_with_data_validation_correctness(self):

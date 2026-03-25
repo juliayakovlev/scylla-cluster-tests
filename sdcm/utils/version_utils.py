@@ -932,6 +932,8 @@ def latest_unified_package(arch: str = "x86_64", product: str = "scylla", branch
 
     Args:
         arch: CPU architecture, e.g. 'x86_64' or 'aarch64'.
+              Also accepts 'arm64' (AWS naming convention) which is
+              automatically normalized to 'aarch64'.
         product: Scylla product name, e.g. 'scylla' or 'scylla-enterprise'.
         branch: Branch name, e.g. 'master' or 'enterprise'.
 
@@ -941,6 +943,10 @@ def latest_unified_package(arch: str = "x86_64", product: str = "scylla", branch
     Raises:
         FileNotFoundError: If no matching unified package is found.
     """
+    # Normalize AWS arch naming ("arm64") to the convention used in
+    # unified-package filenames ("aarch64").
+    if arch == "arm64":
+        arch = "aarch64"
     prefix = f"unstable/{product}/{branch}/relocatable/latest/"
     s3_client: S3Client = boto3.client("s3", region_name=DEFAULT_AWS_REGION, config=Config(signature_version=UNSIGNED))
     response = s3_client.list_objects_v2(Bucket=SCYLLA_REPO_BUCKET, Prefix=prefix)

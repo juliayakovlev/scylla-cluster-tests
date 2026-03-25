@@ -1105,8 +1105,10 @@ class TestLatestUnifiedPackage:
         mock_s3.list_objects_v2.return_value = {
             "Contents": [
                 {"Key": "unstable/scylla/master/relocatable/latest/00-Build.txt"},
-                {"Key": "unstable/scylla/master/relocatable/latest/"
-                        "scylla-unified-5.5.0~dev-0.20231113.7b08886e8dd8.x86_64.tar.gz"},
+                {
+                    "Key": "unstable/scylla/master/relocatable/latest/"
+                    "scylla-unified-5.5.0~dev-0.20231113.7b08886e8dd8.x86_64.tar.gz"
+                },
             ]
         }
 
@@ -1122,12 +1124,32 @@ class TestLatestUnifiedPackage:
         mock_boto3.client.return_value = mock_s3
         mock_s3.list_objects_v2.return_value = {
             "Contents": [
-                {"Key": "unstable/scylla/master/relocatable/latest/"
-                        "scylla-unified-5.5.0~dev-0.20231113.7b08886e8dd8.aarch64.tar.gz"},
+                {
+                    "Key": "unstable/scylla/master/relocatable/latest/"
+                    "scylla-unified-5.5.0~dev-0.20231113.7b08886e8dd8.aarch64.tar.gz"
+                },
             ]
         }
 
         result = latest_unified_package(arch="aarch64")
+        assert "aarch64" in result
+        assert "scylla-unified" in result
+
+    @patch("sdcm.utils.version_utils.boto3")
+    def test_normalizes_arm64_to_aarch64(self, mock_boto3):
+        """Test that 'arm64' (AWS naming) is normalized to 'aarch64' (package naming)."""
+        mock_s3 = MagicMock()
+        mock_boto3.client.return_value = mock_s3
+        mock_s3.list_objects_v2.return_value = {
+            "Contents": [
+                {
+                    "Key": "unstable/scylla/master/relocatable/latest/"
+                    "scylla-unified-5.5.0~dev-0.20231113.7b08886e8dd8.aarch64.tar.gz"
+                },
+            ]
+        }
+
+        result = latest_unified_package(arch="arm64")
         assert "aarch64" in result
         assert "scylla-unified" in result
 
@@ -1159,8 +1181,10 @@ class TestLatestUnifiedPackage:
         mock_boto3.client.return_value = mock_s3
         mock_s3.list_objects_v2.return_value = {
             "Contents": [
-                {"Key": "unstable/scylla-enterprise/enterprise/relocatable/latest/"
-                        "scylla-unified-2024.1.0~dev.x86_64.tar.gz"},
+                {
+                    "Key": "unstable/scylla-enterprise/enterprise/relocatable/latest/"
+                    "scylla-unified-2024.1.0~dev.x86_64.tar.gz"
+                },
             ]
         }
 

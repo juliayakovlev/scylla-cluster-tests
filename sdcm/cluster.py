@@ -2552,6 +2552,26 @@ class BaseNode(AutoSshContainerMixin):
         """
         Offline install scylla by unified package.
         """
+        # Validate architecture match between unified package and node
+        node_arch = self.remoter.run("uname -m", verbose=False).stdout.strip()
+        pkg_url_lower = unified_package.lower()
+        if "aarch64" in pkg_url_lower and node_arch != "aarch64":
+            raise NodeSetupFailed(
+                node=self,
+                error_msg=(
+                    f"Architecture mismatch: unified package is for aarch64 but node architecture is {node_arch}. "
+                    f"Package URL: {unified_package}"
+                ),
+            )
+        if "x86_64" in pkg_url_lower and node_arch != "x86_64":
+            raise NodeSetupFailed(
+                node=self,
+                error_msg=(
+                    f"Architecture mismatch: unified package is for x86_64 but node architecture is {node_arch}. "
+                    f"Package URL: {unified_package}"
+                ),
+            )
+
         # Download unified package
         self.remoter.run(f"curl {unified_package} -o ./unified_package.tar.gz")
 
