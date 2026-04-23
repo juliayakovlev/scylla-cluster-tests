@@ -2591,7 +2591,7 @@ class BaseNode(AutoSshContainerMixin):
             tar -xzO --wildcards -f ./unified_package.tar.gz .relocatable_package_version
         """)
         package_version_cmds_v3 = dedent("""
-            tar -xzO --wildcards -f ./unified_package.tar.gz scylla-*/.relocatable_package_version
+            tar -xzO --wildcards -f ./unified_package.tar.gz scylla*/.relocatable_package_version
         """)
         result = self.remoter.run('bash -cxe "%s"' % package_version_cmds_v3, ignore_status=True)
         if not result.ok:
@@ -2619,7 +2619,7 @@ class BaseNode(AutoSshContainerMixin):
                     tar xvfz ./unified_package.tar.gz
                     echo 'export PATH="$HOME/scylladb/share/cassandra/bin:$HOME/scylladb/bin:$PATH"' >> ~/.bashrc
                     echo 'export PATH="$HOME/scylladb/share/cassandra/bin:$HOME/scylladb/bin:$PATH"' >> ~/.bash_profile
-                    cd ./scylla-*
+                    cd ./scylla*
                     ./install.sh --nonroot
                     cd -
                     sudo rm -f /tmp/scylla.yaml
@@ -2636,7 +2636,7 @@ class BaseNode(AutoSshContainerMixin):
             else:
                 install_cmds = dedent("""
                     tar xvfz ./unified_package.tar.gz
-                    cd ./scylla-*
+                    cd ./scylla*
                     ./install.sh --housekeeping
                     cd -
                     rm -f /tmp/scylla.yaml
