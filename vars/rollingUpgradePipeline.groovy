@@ -268,7 +268,7 @@ def call(Map pipelineParams) {
                                                             wrap([$class: 'BuildUser']) {
                                                                 dir('scylla-cluster-tests') {
                                                                     timeout(time: 5, unit: 'MINUTES') {
-                                                                        createArgusTestRun(params_mapping[base_version])
+//                                                                         createArgusTestRun(params_mapping[base_version])
                                                                     }
                                                                 }
                                                             }
@@ -279,7 +279,7 @@ def call(Map pipelineParams) {
                                                     wrap([$class: 'BuildUser']) {
                                                         dir('scylla-cluster-tests') {
                                                             timeout(time: 5, unit: 'MINUTES') {
-                                                                createSctRunner(params_mapping[base_version], runnerTimeout, builder.region)
+//                                                                 createSctRunner(params_mapping[base_version], runnerTimeout, builder.region)
                                                             }
                                                         }
                                                     }
@@ -290,8 +290,8 @@ def call(Map pipelineParams) {
                                                             dir('scylla-cluster-tests') {
                                                                 timeout(time: 30, unit: 'MINUTES') {
                                                                     if (params.backend == 'aws' || params.backend == 'azure' || params.backend == 'gce' || params.backend == 'oci') {
-                                                                        provisionResources(params_mapping[base_version], builder.region)
-                                                                    } else {
+//                                                                         provisionResources(params_mapping[base_version], builder.region)
+//                                                                     } else {
                                                                         sh """
                                                                             echo 'Skipping because non-AWS/Azure/GCE backends are not supported'
                                                                         """
@@ -307,7 +307,7 @@ def call(Map pipelineParams) {
                                                         wrap([$class: 'BuildUser']) {
                                                             timeout(time: testRunTimeout, unit: 'MINUTES') {
                                                                 dir('scylla-cluster-tests') {
-                                                                    runSctTest(params_mapping[base_version], builder.region, false, pipelineParams)
+//                                                                     runSctTest(params_mapping[base_version], builder.region, false, pipelineParams)
                                                                     completed_stages[base_version]['run_tests'] = true
                                                                 }
                                                             }
@@ -319,7 +319,7 @@ def call(Map pipelineParams) {
                                                         wrap([$class: 'BuildUser']) {
                                                             timeout(time: collectLogsTimeout, unit: 'MINUTES') {
                                                                 dir('scylla-cluster-tests') {
-                                                                    completed_stages[base_version]['collect_logs'] = true
+//                                                                     completed_stages[base_version]['collect_logs'] = true
                                                                     runCollectLogs(params_mapping[base_version], builder.region)
                                                                 }
                                                             }
@@ -344,7 +344,7 @@ def call(Map pipelineParams) {
                                                             wrap([$class: 'BuildUser']) {
                                                                 dir('scylla-cluster-tests') {
                                                                     timeout(time: 5, unit: 'MINUTES') {
-                                                                        finishArgusTestRun(params_mapping[base_version], currentBuild)
+//                                                                         finishArgusTestRun(params_mapping[base_version], currentBuild)
                                                                         completed_stages[base_version]['report_to_argus'] = true
                                                                     }
                                                                 }
@@ -357,7 +357,7 @@ def call(Map pipelineParams) {
                                                         wrap([$class: 'BuildUser']) {
                                                             dir('scylla-cluster-tests') {
                                                                 timeout(time: 10, unit: 'MINUTES') {
-                                                                    runSendEmail(params_mapping[base_version], currentBuild)
+//                                                                     runSendEmail(params_mapping[base_version], currentBuild)
                                                                     completed_stages[base_version]['send_email'] = true
                                                                 }
                                                             }
@@ -395,7 +395,7 @@ def call(Map pipelineParams) {
                                                             wrap([$class: 'BuildUser']) {
                                                                 dir('scylla-cluster-tests') {
                                                                     timeout(time: collectLogsTimeout, unit: 'MINUTES') {
-                                                                        runCollectLogs(params_mapping[base_version], builder.region)
+//                                                                         runCollectLogs(params_mapping[base_version], builder.region)
                                                                     }
                                                                 }
                                                             }
@@ -421,7 +421,7 @@ def call(Map pipelineParams) {
                                                             wrap([$class: 'BuildUser']) {
                                                                 dir('scylla-cluster-tests') {
                                                                     timeout(time: 5, unit: 'MINUTES') {
-                                                                        finishArgusTestRun(params_mapping[base_version], currentBuild)
+//                                                                         finishArgusTestRun(params_mapping[base_version], currentBuild)
                                                                     }
                                                                 }
                                                             }
@@ -434,7 +434,7 @@ def call(Map pipelineParams) {
                                                             wrap([$class: 'BuildUser']) {
                                                                 dir('scylla-cluster-tests') {
                                                                     timeout(time: 10, unit: 'MINUTES') {
-                                                                        runSendEmail(params_mapping[base_version], currentBuild)
+//                                                                         runSendEmail(params_mapping[base_version], currentBuild)
                                                                     }
                                                                 }
                                                             }
