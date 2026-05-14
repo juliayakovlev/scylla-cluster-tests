@@ -399,7 +399,7 @@ class CassandraStressThread(DockerBasedStressThread):
             try:
                 env_check = cmd_runner.run("echo JVM_OPTS=$JVM_OPTS", ignore_status=True, verbose=False)
                 LOGGER.info("JVM_OPTS env inside container: %s", env_check.stdout.strip())
-            except Exception:  # pylint: disable=broad-except
+            except Exception:  # noqa: BLE001
                 LOGGER.debug("Could not verify JVM_OPTS inside container", exc_info=True)
 
         tag = f"TAG: loader_idx:{loader_idx}-cpu_idx:{cpu_idx}-keyspace_idx:{keyspace_idx}"
