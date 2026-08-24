@@ -3355,6 +3355,28 @@ class BaseNode(AutoSshContainerMixin):
             == 0
         )
 
+    def disable_services(self, service_names: list[str], timeout: int = 500) -> None:
+        """Stop, disable and mask systemd services on the node.
+
+        Masking is done on top of disabling, so a service can't be pulled back by another
+        unit that wants it, by a package post-install script or by a manual `systemctl start`.
+        Raises NodeSetupFailed if a service is still running afterwards, so a test that
+        depends on the service being down doesn't silently run with it up.
+        """
+        for service_name in service_names:
+            if not self.is_service_exists(service_name=service_name, timeout=timeout):
+                self.log.warning("Service %s doesn't exist on the node, nothing to disable", service_name)
+                continue
+            self.log.info("Stopping, disabling and masking %s service", service_name)
+            self._service_cmd(service_name=service_name, cmd="disable --now", timeout=timeout, ignore_status=True)
+            self._service_cmd(service_name=service_name, cmd="mask", timeout=timeout, ignore_status=True)
+            state = self.remoter.run(
+                f"{self.systemctl} is-active {service_name}.service", timeout=timeout, ignore_status=True
+            ).stdout.strip()
+            if state == "active":
+                raise NodeSetupFailed(node=self, error_msg=f"Failed to stop the '{service_name}' service")
+            self.log.info("Service %s is not running (state: %s)", service_name, state)
+
     def start_service(self, service_name: str, timeout: int = 500, ignore_status=False):
         with DbNodeLogger([self], f"start {service_name}", target_node=self):
             self._service_cmd(service_name=service_name, cmd="start", timeout=timeout, ignore_status=ignore_status)
@@ -6302,6 +6324,12 @@ class BaseScyllaCluster:
 
         if self.params.get("use_mgmt") and self.node_type == "scylla-db":
             self.install_scylla_manager(node)
+
+        # kept last in node_setup: scylla-server is already stopped at this point (see above), no
+        # later setup step can re-enable a service, and node_startup() - which starts scylla-server -
+        # only runs once node_setup() finished on every node of the cluster
+        if disable_services := self.params.get("db_nodes_disable_services"):
+            node.disable_services(disable_services)
 
     def node_startup(self, node: BaseNode, verbose: bool = False, timeout: int = 3600):
         if not self.test_config.REUSE_CLUSTER:

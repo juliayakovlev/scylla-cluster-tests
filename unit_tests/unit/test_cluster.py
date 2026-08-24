@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 import pytest
 from invoke import Result
 
-from sdcm.cluster import BaseCluster, BaseMonitorSet, BaseNode
+from sdcm.cluster import BaseCluster, BaseMonitorSet, BaseNode, NodeSetupFailed
 from sdcm.db_log_reader import DbLogReader
 from sdcm.provision.network_configuration import NetworkInterface, ScyllaNetworkConfiguration
 from sdcm.sct_events.database import SYSTEM_ERROR_EVENTS_PATTERNS
@@ -817,6 +817,78 @@ def test_base_node_cpuset_not_configured(cat_results, tmp_path):
         },
     )
     assert dummy_node.cpuset == ""
+
+
+class FakeServiceRemoter:
+    """Records the commands issued by BaseNode.disable_services() and replays canned results."""
+
+    def __init__(self, existing_services=(), still_active_services=()):
+        self.commands = []
+        self.existing_services = set(existing_services)
+        self.still_active_services = set(still_active_services)
+
+    def run(self, cmd, *args, **kwargs):
+        self.commands.append(cmd)
+        if "list-unit-files" in cmd:
+            service = cmd.split("grep ")[-1].replace(".service", "")
+            return Result(stdout="", exited=0 if service in self.existing_services else 1)
+        if "is-active" in cmd:
+            service = cmd.split()[-1].replace(".service", "")
+            return Result(stdout="active\n" if service in self.still_active_services else "inactive\n", exited=0)
+        return Result(stdout="", exited=0)
+
+    def sudo(self, cmd, *args, **kwargs):
+        return self.run(cmd, *args, **kwargs)
+
+
+def _dummy_node_with_service_remoter(tmp_path, remoter):
+    dummy_node = DummyNode(
+        name="dummy_node",
+        parent_cluster=None,
+        base_logdir=str(tmp_path),
+        ssh_login_info=dict(key_file="~/.ssh/scylla_test_id_ed25519"),
+    )
+    dummy_node.parent_cluster = DummyDbCluster([dummy_node])
+    dummy_node.init()
+    dummy_node.remoter = remoter
+    return dummy_node
+
+
+def test_disable_services_stops_disables_and_masks(tmp_path):
+    """A service that exists is stopped, disabled and masked, then verified to be down."""
+    remoter = FakeServiceRemoter(existing_services=["scylla-perf-collector"])
+    dummy_node = _dummy_node_with_service_remoter(tmp_path, remoter)
+
+    dummy_node.disable_services(["scylla-perf-collector"])
+
+    service_commands = [cmd for cmd in remoter.commands if "list-unit-files" not in cmd]
+    assert service_commands == [
+        "sudo systemctl disable --now scylla-perf-collector.service",
+        "sudo systemctl mask scylla-perf-collector.service",
+        "sudo systemctl is-active scylla-perf-collector.service",
+    ]
+
+
+def test_disable_services_skips_missing_service(tmp_path):
+    """A service that isn't installed is skipped instead of failing the node setup."""
+    remoter = FakeServiceRemoter(existing_services=[])
+    dummy_node = _dummy_node_with_service_remoter(tmp_path, remoter)
+
+    dummy_node.disable_services(["scylla-perf-collector"])
+
+    assert [cmd for cmd in remoter.commands if "list-unit-files" not in cmd] == []
+
+
+def test_disable_services_raises_if_service_still_running(tmp_path):
+    """Node setup must fail loudly rather than start Scylla with the service still up."""
+    remoter = FakeServiceRemoter(
+        existing_services=["scylla-perf-collector"],
+        still_active_services=["scylla-perf-collector"],
+    )
+    dummy_node = _dummy_node_with_service_remoter(tmp_path, remoter)
+
+    with pytest.raises(NodeSetupFailed, match="Failed to stop the 'scylla-perf-collector' service"):
+        dummy_node.disable_services(["scylla-perf-collector"])
 
 
 class TestNodetool:

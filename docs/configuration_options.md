@@ -1594,6 +1594,15 @@ list of files that should upload to /etc/scylla.d/ directory to override scylla 
 **type:** str | list[str] → list[str] (appendable)
 
 
+## **db_nodes_disable_services** / SCT_DB_NODES_DISABLE_SERVICES
+
+list of systemd services to stop, disable and mask on the DB nodes during node setup, before scylla-server is started (e.g. ['scylla-perf-collector'])
+
+**default:** []
+
+**type:** str | list[str] → list[str] (appendable)
+
+
 ## **gce_project** / SCT_GCE_PROJECT
 
 gcp project name to use

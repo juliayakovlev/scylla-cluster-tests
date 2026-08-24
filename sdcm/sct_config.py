@@ -1250,6 +1250,11 @@ class SCTConfiguration(BaseModel):
         description="list of files that should upload to /etc/scylla.d/ directory to override scylla config files",
         appendable=True,
     )
+    db_nodes_disable_services: StringOrList = SctField(
+        description="list of systemd services to stop, disable and mask on the DB nodes during node setup, "
+        "before scylla-server is started (e.g. ['scylla-perf-collector'])",
+        appendable=True,
+    )
     gce_project: String = SctField(
         description="gcp project name to use",
     )
