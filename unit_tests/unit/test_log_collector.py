@@ -25,6 +25,9 @@ from sdcm.logcollector import (
     PrometheusSnapshots,
     MonitoringStack,
     GrafanaScreenShot,
+    RemoteDirArchiveLog,
+    ScyllaLogCollector,
+    LogCollector,
 )
 from sdcm.provision import provisioner_factory
 from unit_tests.lib.fake_resources import prepare_fake_region
@@ -346,3 +349,129 @@ def test_monitoring_entities_skip_when_no_monitor_nodes(tmp_path):
         grafana_entity.set_params(params)
         result = grafana_entity.collect(mock_node, test_dir, None, None)
         assert result == [], f"GrafanaScreenShot should skip for {backend} with n_monitor_nodes=0"
+
+
+def _remote_dir_node(dir_content="perf.data.20260908120000\n", tar_ok=True):
+    """A node whose remoter answers the three commands the entity issues, by command shape."""
+    node = MagicMock()
+    node.name = "perf-collector-node-1"
+
+    def sudo(cmd, **_):
+        if cmd.startswith("test -d"):
+            return MagicMock(ok=bool(dir_content), stdout=dir_content or "")
+        if cmd.startswith("du -sh"):
+            return MagicMock(ok=True, stdout="12M\t/var/log/scylla-perf\n")
+        if cmd.startswith("tar "):
+            return MagicMock(ok=tar_ok, stdout="")
+        return MagicMock(ok=True, stdout="")
+
+    node.remoter.sudo.side_effect = sudo
+    return node
+
+
+def test_remote_dir_archive_log_archives_and_receives(tmp_path):
+    """The directory is tarred on the node under sudo and the archive is fetched."""
+    node = _remote_dir_node()
+    entity = RemoteDirArchiveLog(name="perf-data", remote_dir="/var/log/scylla-perf/")
+
+    with (
+        patch("sdcm.logcollector.check_archive", return_value=True) as mock_check,
+        patch("sdcm.logcollector.LogCollector.receive_log") as mock_receive,
+    ):
+        result = entity.collect(node=node, local_dst=str(tmp_path), remote_dst="/tmp/collected")
+
+    assert result == str(tmp_path / "perf-data.tar.zst")
+    tar_cmd = [call.args[0] for call in node.remoter.sudo.call_args_list if call.args[0].startswith("tar ")][0]
+    # -C the parent, so the archive keeps the directory itself as its single top-level entry
+    assert "-cf '/tmp/collected/perf-data.tar.zst' -C '/var/log' 'scylla-perf'" in tar_cmd
+    mock_check.assert_called_once_with(node.remoter, "/tmp/collected/perf-data.tar.zst")
+    mock_receive.assert_called_once_with(
+        node=node, remote_log_path="/tmp/collected/perf-data.tar.zst", local_dir=str(tmp_path), timeout=600
+    )
+
+
+@pytest.mark.parametrize(
+    "dir_content",
+    (pytest.param("", id="directory-missing"), pytest.param("\n", id="directory-empty")),
+)
+def test_remote_dir_archive_log_skips_when_there_is_nothing_to_collect(tmp_path, dir_content):
+    """The package creates the directory, so an empty one is normal and not an error."""
+    node = _remote_dir_node(dir_content=dir_content)
+    entity = RemoteDirArchiveLog(name="perf-data", remote_dir="/var/log/scylla-perf")
+
+    with patch("sdcm.logcollector.LogCollector.receive_log") as mock_receive:
+        assert entity.collect(node=node, local_dst=str(tmp_path), remote_dst="/tmp/collected") is None
+
+    assert not [call for call in node.remoter.sudo.call_args_list if call.args[0].startswith("tar ")]
+    mock_receive.assert_not_called()
+
+
+def test_remote_dir_archive_log_does_not_fetch_a_failed_archive(tmp_path):
+    node = _remote_dir_node(tar_ok=False)
+    entity = RemoteDirArchiveLog(name="perf-data", remote_dir="/var/log/scylla-perf")
+
+    with patch("sdcm.logcollector.LogCollector.receive_log") as mock_receive:
+        assert entity.collect(node=node, local_dst=str(tmp_path), remote_dst="/tmp/collected") is None
+
+    mock_receive.assert_not_called()
+
+
+def test_remote_dir_archive_log_does_not_fetch_a_corrupted_archive(tmp_path):
+    node = _remote_dir_node()
+    entity = RemoteDirArchiveLog(name="perf-data", remote_dir="/var/log/scylla-perf")
+
+    with (
+        patch("sdcm.logcollector.check_archive", return_value=False),
+        patch("sdcm.logcollector.LogCollector.receive_log") as mock_receive,
+    ):
+        assert entity.collect(node=node, local_dst=str(tmp_path), remote_dst="/tmp/collected") is None
+
+    mock_receive.assert_not_called()
+
+
+def test_remote_dir_archive_log_needs_a_remote_storage_dir(tmp_path):
+    """Without remote_dst there is nowhere on the node to put the archive."""
+    node = _remote_dir_node()
+    entity = RemoteDirArchiveLog(name="perf-data", remote_dir="/var/log/scylla-perf")
+
+    assert entity.collect(node=node, local_dst=str(tmp_path), remote_dst=None) is None
+    node.remoter.sudo.assert_not_called()
+
+
+def test_scylla_log_collector_collects_the_perf_collector_recordings():
+    """The perf recordings of scylla-perf-collector must stay part of the db-cluster logs."""
+    entities = [entity for entity in ScyllaLogCollector.log_entities if isinstance(entity, RemoteDirArchiveLog)]
+    assert [(entity.name, entity.remote_dir) for entity in entities] == [("perf-data", "/var/log/scylla-perf")]
+
+
+def test_archive_log_remotely_defaults_to_the_source_dir_without_sudo():
+    """The pre-existing callers pass a path they own, and must keep archiving in place."""
+    node = MagicMock()
+    node.remoter.run.return_value = MagicMock(ok=True, stdout="")
+
+    with patch("sdcm.logcollector.check_archive", return_value=True):
+        archive = LogCollector.archive_log_remotely(node, "/home/ubuntu/snapshot", "prometheus_data")
+
+    assert archive == "/home/ubuntu/prometheus_data.tar.zst"
+    assert "-cf '/home/ubuntu/prometheus_data.tar.zst' -C '/home/ubuntu' 'snapshot'" in node.remoter.run.call_args[0][0]
+    node.remoter.sudo.assert_not_called()
+
+
+def test_archive_log_remotely_with_sudo_writes_to_the_given_destination():
+    node = MagicMock()
+    node.remoter.sudo.return_value = MagicMock(ok=True, stdout="")
+
+    with patch("sdcm.logcollector.check_archive", return_value=True):
+        archive = LogCollector.archive_log_remotely(
+            node, "/var/log/scylla-perf", "perf-data", archive_dst="/tmp/collected", use_sudo=True
+        )
+
+    assert archive == "/tmp/collected/perf-data.tar.zst"
+    sudo_cmds = [call.args[0] for call in node.remoter.sudo.call_args_list]
+    assert (
+        "tar --zstd --warning=no-file-changed -cf '/tmp/collected/perf-data.tar.zst' -C '/var/log' 'scylla-perf'"
+        in sudo_cmds
+    )
+    # the archive is verified and fetched as the login user, not as root
+    assert "chmod a+r '/tmp/collected/perf-data.tar.zst'" in sudo_cmds
+    node.remoter.run.assert_not_called()
