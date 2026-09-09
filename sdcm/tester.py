@@ -258,6 +258,9 @@ TEST_LOG = logging.getLogger(__name__)
 # timeout for the full scylla-doctor collection during failure handling
 SCYLLA_DOCTOR_TEARDOWN_TIMEOUT = 30 * 60
 
+# scylla-server helper that periodically restarts a system-wide `perf record`
+PERF_COLLECTOR_SERVICE = "scylla-perf-collector"
+
 PYTHON_THREAD_LIST = (KafkaCDCReaderThread, KafkaProducerThread, KafkaValidatorThread)
 
 
@@ -4271,6 +4274,38 @@ class ClusterTester(unittest.TestCase):
 
         self.log.info("Failure statistics collection completed")
 
+    def stop_perf_collector(self):
+        """Stop scylla-server's perf-collector helper on the DB nodes.
+
+        The helper (scylladb/scylladb#30076) periodically restarts a system-wide
+        `perf record`, which keeps sampling and writing to disk for as long as it runs.
+        Teardown is where the perf data of a performance run gets finalized and collected,
+        so stop the collector before any of it happens instead of leaving it recording
+        over the teardown itself.
+
+        A node that has no such service (older Scylla) or no systemd to ask about it
+        (the containerized backends, and xcloud which exposes no ssh login info) is skipped.
+        Failing to stop it is logged and not raised: the measurement is already over by
+        teardown, and one unreachable node must not keep the collector running on the rest.
+        """
+        if not self.db_cluster:
+            return
+
+        def stop_on_node(node):
+            if node.is_kubernetes() or node.is_docker() or not node.ssh_login_info:
+                self.log.debug("%s: no systemd access, skipping %s", node.name, PERF_COLLECTOR_SERVICE)
+                return
+            try:
+                if not node.is_service_exists(service_name=PERF_COLLECTOR_SERVICE):
+                    self.log.debug("%s: %s service is not installed", node.name, PERF_COLLECTOR_SERVICE)
+                    return
+                self.log.info("%s: stopping %s service", node.name, PERF_COLLECTOR_SERVICE)
+                node.stop_service(service_name=PERF_COLLECTOR_SERVICE, ignore_status=True)
+            except Exception as exc:  # noqa: BLE001
+                self.log.warning("%s: failed to stop %s: %s", node.name, PERF_COLLECTOR_SERVICE, exc)
+
+        self.db_cluster.run_func_parallel(func=stop_on_node)
+
     def save_schema(self):
         """
         Saves the node's schema including internal metadata.
@@ -4329,6 +4364,10 @@ class ClusterTester(unittest.TestCase):
         # diagnostic commands (gather_failure_statistics, validators) hang indefinitely.
         if self.db_cluster:
             self.stop_nemesis(self.db_cluster)
+        # After stop_nemesis() on purpose: a nemesis restarting scylla-server can bring
+        # the collector back up with it, so stopping it any earlier can be undone.
+        with silence(parent=self, name="Stopping perf-collector"):
+            self.stop_perf_collector()
         with silence(parent=self, name="Enabling teardown filters"):
             enable_teardown_filters()
         with silence(parent=self, name="Sending test end event"):
