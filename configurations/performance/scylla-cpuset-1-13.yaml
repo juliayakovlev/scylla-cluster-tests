@@ -1,0 +1,5 @@
+# Run Scylla on cpus 1-13 instead of the cpuset generated on the image (1-15 on a 16 vCPU
+# instance), leaving cpu 0 to IRQs and cpus 14-15 free for e.g. `--async-workers-cpuset 14-15`.
+# Add this file to test_config, along with a 16 vCPU instance type configuration.
+scylla_d_overrides_files:
+  - 'configurations/performance/scylla.d/cpuset.conf'
