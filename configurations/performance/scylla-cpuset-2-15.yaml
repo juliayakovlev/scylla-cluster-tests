@@ -2,4 +2,4 @@
 # instance), keeping cpus 0-1 out of its cpuset for e.g. `--async-workers-cpuset=0-1`.
 # Add this file to test_config, along with a 16 vCPU instance type configuration.
 scylla_d_overrides_files:
-  - 'configurations/performance/scylla.d/cpuset.conf'
+  - 'configurations/performance/scylla.d/cpuset-2-15/cpuset.conf'
