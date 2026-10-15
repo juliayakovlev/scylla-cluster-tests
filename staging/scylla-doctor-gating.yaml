@@ -1,5 +1,5 @@
 # STAGING ONLY - not for merge. Copy of configurations/triggers/scylla-doctor-gating.yaml
-# pointing at scylla-staging/julia.yakovlev jobs.
+# pointing at scylla-staging/yulia jobs.
 
 # Scylla-doctor gating trigger — runs artifacts tests with full doctor edition,
 # waits for completion, and collects analysis results.
@@ -19,7 +19,7 @@ defaults:
   run_scylla_doctor_only: "true"
 
 jobs:
-  - job_name: "/scylla-staging/julia.yakovlev/scylla-doctor/oss/artifacts/artifacts-ami-test"
+  - job_name: "/scylla-staging/yulia/scylla-doctor/oss/artifacts/artifacts-ami-test"
     backend: "aws"
     wait: true
     wait_timeout: 7200
@@ -32,7 +32,7 @@ jobs:
       region: "eu-west-1"
       scylla_doctor_edition: "full"
 
-  - job_name: "/scylla-staging/julia.yakovlev/scylla-doctor/oss/artifacts/artifacts-ami-arm-test"
+  - job_name: "/scylla-staging/yulia/scylla-doctor/oss/artifacts/artifacts-ami-arm-test"
     backend: "aws"
     arch: "aarch64"
     wait: true
@@ -46,7 +46,7 @@ jobs:
       region: "eu-west-1"
       scylla_doctor_edition: "full"
 
-  - job_name: "/scylla-staging/julia.yakovlev/scylla-doctor/oss/artifacts/artifacts-docker-test"
+  - job_name: "/scylla-staging/yulia/scylla-doctor/oss/artifacts/artifacts-docker-test"
     backend: "aws"
     wait: true
     wait_timeout: 3600
