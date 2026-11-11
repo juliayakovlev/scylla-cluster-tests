@@ -1,0 +1,9 @@
+# AWS I9g, Graviton limited preview (SCT-1473): us-west-2 only, and only i9g.4xlarge is offered to us.
+# Preview instances go away at GA, so the jobs using this file are not in the triggers.
+instance_type_db: 'i9g.4xlarge'
+cs_safepoint_logging: true
+
+# The Scylla AMI does not list i9g as a supported instance class, so it never writes
+# /etc/scylla.d/io_properties.yaml and scylla-server fails with "Bad I/O Scheduler configuration".
+# Measure the disks with iotune (scylla_io_setup) during node setup instead.
+force_run_iotune: true
