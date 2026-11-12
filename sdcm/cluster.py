@@ -5456,6 +5456,17 @@ class BaseScyllaCluster:
                 node.log.info("Scylla_io_setup result: %s", result.stdout)
 
         if self.params.get("force_run_iotune"):
+            # TEMPORARY (SCT-1473): scylla_io_setup passes --random-write-io-buffer-size 4096 to iotune only
+            # for i7i/i4i/i8g/i8ge (their controllers report a 512B physical sector, the real one is 4K).
+            # i9g is not in that list yet, so iotune measures random writes with 512B requests.
+            # Add i9g to the list on the node before running it. Remove once Scylla/SMI support i9g.
+            if str(self.params.get("instance_type_db") or "").startswith("i9g"):
+                script = "$(readlink -f $(command -v scylla_io_setup))"
+                node.remoter.sudo(
+                    cmd=f'sed -i \'s/prefixes = \\["i7i"/prefixes = ["i9g", "i7i"/\' {script}'
+                    f" && grep -n 'prefixes = ' {script}",
+                    verbose=True,
+                )
             node.remoter.sudo(cmd="scylla_io_setup", timeout=600)
             if self.params.get("cluster_backend") == "azure":
                 node.remoter.sudo(cmd="/opt/scylladb/scripts/perftune.py --nic eth1 --tune net", timeout=600)
