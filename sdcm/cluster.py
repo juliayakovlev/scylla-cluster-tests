@@ -5460,8 +5460,12 @@ class BaseScyllaCluster:
             # for i7i/i4i/i8g/i8ge (their controllers report a 512B physical sector, the real one is 4K).
             # i9g is not in that list yet, so iotune measures random writes with 512B requests.
             # Add i9g to the list on the node before running it. Remove once Scylla/SMI support i9g.
+            # scylla_io_setup in /opt/scylladb/scripts is a bash thunk; the python script is in libexec/ next to it.
             if str(self.params.get("instance_type_db") or "").startswith("i9g"):
-                script = "$(readlink -f $(command -v scylla_io_setup))"
+                script = (
+                    "$(f=$(readlink -f $(command -v scylla_io_setup)); l=$(dirname $f)/libexec/$(basename $f);"
+                    " if [ -f $l ]; then echo $l; else echo $f; fi)"
+                )
                 node.remoter.sudo(
                     cmd=f'sed -i \'s/prefixes = \\["i7i"/prefixes = ["i9g", "i7i"/\' {script}'
                     f" && grep -n 'prefixes = ' {script}",
