@@ -10,6 +10,9 @@ n_monitor_nodes: 1
 instance_provision: 'on_demand'
 # Same as the I9g predefined-throughput-steps runs: all DB nodes in one cluster placement group.
 use_placement_group: true
+# Same as the perf runs: reserve all instances first, trying each AZ that offers i9g.4xlarge
+# (us-west-2a had no i9g capacity; the perf runs fell back to us-west-2b).
+use_capacity_reservation: true
 
 stress_cmd: ["cassandra-stress write no-warmup cl=QUORUM duration=1m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=50 -pop seq=1..1000000"]
 
