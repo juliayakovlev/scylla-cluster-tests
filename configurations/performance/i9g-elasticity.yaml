@@ -1,0 +1,12 @@
+# AWS I9g Graviton preview (SCT-1473): the 2.5TB elasticity test on i9g.4xlarge.
+# Use after test-cases/performance/perf-regression-latency-2.5tb-elasticity.yaml and
+# configurations/arm_instance_types/i9g_4xlarge.yaml (DB instance type + force_run_iotune).
+
+# Only i9g.4xlarge is offered in the preview, so the 6 nodes GrowShrinkClusterNemesis adds are
+# i9g.4xlarge too (the i8g job adds i8g.2xlarge). 3 + 6 = 9 x i9g.4xlarge, checked to provision
+# in us-west-2b (the other AZs had no i9g capacity).
+nemesis_grow_shrink_instance_type: 'i9g.4xlarge'
+
+# c6i.xlarge and c7i.8xlarge had no capacity in us-west-2b during the 9-node checks; c7i.2xlarge
+# (same 8 vCPU / 16 GB as the i8g job's c6i.2xlarge) launched there.
+instance_type_loader: 'c7i.2xlarge'
