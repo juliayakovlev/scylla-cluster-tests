@@ -64,8 +64,8 @@ SUPPORTED_REGIONS = {
     # us-east1 zones: b, c, and d. Details: https://cloud.google.com/compute/docs/regions-zones#locations
     # Currently choose only zones c and d as zone b frequently fails allocating resources.
     "us-east1": "cd",
-    # Experiment: pin us-east4 to zone a; zone c ran out of z3-highmem-16 capacity (ZONE_RESOURCE_POOL_EXHAUSTED).
-    "us-east4": "a",
+    # Experiment: pin us-east4 to zone b; zones a and c ran out of z3-highmem-16 capacity (ZONE_RESOURCE_POOL_EXHAUSTED).
+    "us-east4": "b",
     "us-west1": "abc",
     "us-central1": "abcf",
 }
