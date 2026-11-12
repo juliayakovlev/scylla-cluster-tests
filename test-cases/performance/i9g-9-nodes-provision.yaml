@@ -6,6 +6,10 @@ test_duration: 90
 n_db_nodes: 9
 n_loaders: 1
 n_monitor_nodes: 1
+# The default loader (c6i.xlarge) had no capacity in us-west-2b; the I9g perf runs got c7i.8xlarge there.
+instance_type_loader: 'c7i.8xlarge'
+# No nemesis: reserve exactly 9 DB nodes (the default reserves 3 more for nemesis add-node).
+nemesis_add_node_cnt: 0
 
 instance_provision: 'on_demand'
 # Same as the I9g predefined-throughput-steps runs: all DB nodes in one cluster placement group.
