@@ -1,0 +1,12 @@
+#!groovy
+
+// AWS I9g Graviton preview (SCT-1473): check that 9 x i9g.4xlarge can be provisioned in us-west-2 and Scylla
+// starts on all of them; a 1-minute write, then everything is destroyed. Not in the triggers.
+def lib = library identifier: 'sct@snapshot', retriever: legacySCM(scm)
+
+longevityPipeline(
+    backend: 'aws',
+    region: 'us-west-2',
+    test_name: 'longevity_test.LongevityTest.test_custom_time',
+    test_config: '''["test-cases/performance/i9g-9-nodes-provision.yaml", "configurations/disable_kms.yaml", "configurations/arm_instance_types/i9g_4xlarge.yaml"]''',
+)

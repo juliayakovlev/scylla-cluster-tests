@@ -1,0 +1,21 @@
+# AWS I9g Graviton preview (SCT-1473): can we get 9 x i9g.4xlarge in one cluster?
+# Provision 9 DB nodes, start Scylla on all of them, write for 1 minute, then destroy everything.
+# Use with configurations/arm_instance_types/i9g_4xlarge.yaml (instance type + force_run_iotune).
+test_duration: 90
+
+n_db_nodes: 9
+n_loaders: 1
+n_monitor_nodes: 1
+
+instance_provision: 'on_demand'
+# Same as the I9g predefined-throughput-steps runs: all DB nodes in one cluster placement group.
+use_placement_group: true
+
+stress_cmd: ["cassandra-stress write no-warmup cl=QUORUM duration=1m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=50 -pop seq=1..1000000"]
+
+nemesis_class_name: 'NoOpMonkey'
+
+user_prefix: 'i9g-9-nodes-provision'
+post_behavior_db_nodes: 'destroy'
+post_behavior_loader_nodes: 'destroy'
+post_behavior_monitor_nodes: 'destroy'
