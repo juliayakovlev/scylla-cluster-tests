@@ -1,0 +1,13 @@
+# Raises the dataset of perf-regression-latency-650gb-with-nemesis.yaml from 650M to 1.5B partitions,
+# so the data fills about 50% of the disk on 3 x i8g.4xlarge (3,748 GB NVMe per node).
+# The 650M dataset used ~789 GB per node (~1,214 bytes per partition), or 21% of the disk.
+# 1.5B partitions -> ~1,821 GB per node (48.6%) after prepare, about 50% during the stress.
+# The gauss sigma is scaled with the dataset, so it stays 1.5% (write, read) and 1% (mixed) of it.
+prepare_write_cmd: ["cassandra-stress write no-warmup cl=ALL n=375000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=200 -col 'size=FIXED(128) n=FIXED(8)' -pop seq=1..375000000",
+                    "cassandra-stress write no-warmup cl=ALL n=375000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=200 -col 'size=FIXED(128) n=FIXED(8)' -pop seq=375000000..750000000",
+                    "cassandra-stress write no-warmup cl=ALL n=375000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=200 -col 'size=FIXED(128) n=FIXED(8)' -pop seq=750000000..1125000000",
+                    "cassandra-stress write no-warmup cl=ALL n=375000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=200 -col 'size=FIXED(128) n=FIXED(8)' -pop seq=1125000000..1500000000"]
+
+stress_cmd_w: "cassandra-stress write no-warmup cl=QUORUM duration=2850m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=250 fixed=20332/s' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,22500000)' "
+stress_cmd_r: "cassandra-stress read no-warmup  cl=QUORUM duration=800m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=250 fixed=10310/s' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,22500000)' "
+stress_cmd_m: "cassandra-stress mixed no-warmup cl=QUORUM duration=800m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate 'threads=250 fixed=8750/s' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,15000000)' "
