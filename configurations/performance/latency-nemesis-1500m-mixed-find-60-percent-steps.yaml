@@ -1,0 +1,32 @@
+# Finds the mixed rate for latency-with-nemesis i8g tablets that reaches 60% of the i8g max mixed
+# throughput (850K ops/s in cassandra_stress_gradual_load_steps_i8g.yaml), so 510K ops/s.
+# Used with test-cases/performance/perf-regression-predefined-throughput-steps.yaml (c7i.8xlarge loaders)
+# and test_mixed_gradual_increase_load: prepare the 1.5B partition dataset of
+# latency-nemesis-1500m-dataset-50-percent-disk.yaml, then run 15 minute mixed steps with a growing rate.
+# The steps are watched live and the build is aborted once a step reaches 510K ops/s.
+# At 160K ops/s (build #3 of the latency job) the reactor was at 46-49%, so the steps start at 300K.
+prepare_write_cmd: ["cassandra-stress write no-warmup cl=ALL n=375000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=200 -col 'size=FIXED(128) n=FIXED(8)' -pop seq=1..375000000",
+                    "cassandra-stress write no-warmup cl=ALL n=375000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=200 -col 'size=FIXED(128) n=FIXED(8)' -pop seq=375000000..750000000",
+                    "cassandra-stress write no-warmup cl=ALL n=375000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=200 -col 'size=FIXED(128) n=FIXED(8)' -pop seq=750000000..1125000000",
+                    "cassandra-stress write no-warmup cl=ALL n=375000000 -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=200 -col 'size=FIXED(128) n=FIXED(8)' -pop seq=1125000000..1500000000"]
+
+# Warm the cache on the gauss hot set used by the mixed steps.
+stress_cmd_cache_warmup: ["cassandra-stress read no-warmup cl=ALL n=10000000 -mode cql3 native -rate 'threads=$threads' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,15000000)'",
+                          "cassandra-stress read no-warmup cl=ALL n=10000000 -mode cql3 native -rate 'threads=$threads' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,15000000)'",
+                          "cassandra-stress read no-warmup cl=ALL n=10000000 -mode cql3 native -rate 'threads=$threads' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,15000000)'",
+                          "cassandra-stress read no-warmup cl=ALL n=10000000 -mode cql3 native -rate 'threads=$threads' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,15000000)'"]
+
+# Same mixed command as the latency test, with the step rate and threads filled in by the test.
+stress_cmd_m: ["cassandra-stress mixed no-warmup cl=QUORUM duration=$duration -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,15000000)'",
+               "cassandra-stress mixed no-warmup cl=QUORUM duration=$duration -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,15000000)'",
+               "cassandra-stress mixed no-warmup cl=QUORUM duration=$duration -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,15000000)'",
+               "cassandra-stress mixed no-warmup cl=QUORUM duration=$duration -mode cql3 native -rate 'threads=$threads $throttle' -col 'size=FIXED(128) n=FIXED(8)' -pop 'dist=gauss(1..1500000000,750000000,15000000)'"]
+
+# Rates are for the whole cluster (split over the 4 loaders). 2000 threads per loader leave room for
+# on-disk read latency at 510K ops/s (~16 ms per request).
+perf_gradual_threads: {"mixed": 2000}
+perf_gradual_throttle_steps: {"mixed": ['300000', '360000', '420000', '470000', '510000', '560000', '620000', 'unthrottled']}
+perf_gradual_step_duration: {"mixed": '15m'}
+
+test_duration: 600
+use_capacity_reservation: false
